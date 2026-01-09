@@ -48,6 +48,16 @@ const Dashboard: React.FC<DashboardProps> = ({ state, currentTheme, addTheme, up
     }
   };
 
+  const handleCreateTheme = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newName && newGoal) {
+      addTheme(newName, newGoal);
+      setIsAdding(false);
+      setNewName('');
+      setNewGoal('');
+    }
+  };
+
   const startVoiceInput = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -65,9 +75,9 @@ const Dashboard: React.FC<DashboardProps> = ({ state, currentTheme, addTheme, up
   };
 
   return (
-    <div className="p-6 space-y-8 h-full overflow-y-auto relative">
+    <div className="p-6 pb-24 space-y-8 h-full overflow-y-auto relative">
       {showToast && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[45] bg-slate-900 text-white px-6 py-3 rounded-full text-xs font-bold shadow-xl animate-in fade-in slide-in-from-top-2">
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-slate-900 text-white px-6 py-3 rounded-full text-xs font-bold shadow-xl animate-in fade-in slide-in-from-top-2">
           💡 保存しました
         </div>
       )}
@@ -190,8 +200,11 @@ const Dashboard: React.FC<DashboardProps> = ({ state, currentTheme, addTheme, up
       )}
 
       {isAdding && (
-        <div className="absolute inset-0 z-[40] bg-slate-900/60 backdrop-blur-sm flex items-end justify-center p-4">
-          <div className="bg-white w-full p-8 rounded-[48px] shadow-2xl space-y-6 animate-in slide-in-from-bottom-10">
+        <div className="fixed inset-0 z-[110] bg-slate-900/60 backdrop-blur-sm flex items-end justify-center p-4">
+          <form 
+            onSubmit={handleCreateTheme}
+            className="bg-white w-full p-8 rounded-[48px] shadow-2xl space-y-6 animate-in slide-in-from-bottom-10"
+          >
             <h2 className="text-2xl font-black">新しいテーマ</h2>
             <div className="space-y-4">
               <div>
@@ -204,15 +217,15 @@ const Dashboard: React.FC<DashboardProps> = ({ state, currentTheme, addTheme, up
               </div>
             </div>
             <div className="flex gap-3">
-              <button onClick={() => setIsAdding(false)} className="flex-1 p-4 font-bold text-slate-400">キャンセル</button>
+              <button type="button" onClick={() => setIsAdding(false)} className="flex-1 p-4 font-bold text-slate-400">キャンセル</button>
               <button 
-                onClick={(e) => { e.preventDefault(); if(newName && newGoal) { addTheme(newName, newGoal); setIsAdding(false); setNewName(''); setNewGoal(''); } }} 
-                className="flex-[2] bg-indigo-600 text-white p-4 rounded-3xl font-black shadow-xl"
+                type="submit" 
+                className="flex-[2] bg-indigo-600 text-white p-4 rounded-3xl font-black shadow-xl active:scale-95 transition-transform"
               >
                 テーマを決定
               </button>
             </div>
-          </div>
+          </form>
         </div>
       )}
     </div>
