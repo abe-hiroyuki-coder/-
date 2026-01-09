@@ -1,5 +1,6 @@
 
 export interface UserProfile {
+  id: string; // 内部的な一意ID
   name: string;
   isLoggedIn: boolean;
   notificationFrequency: 'daily' | 'weekly' | 'none';
@@ -8,6 +9,7 @@ export interface UserProfile {
 
 export interface Theme {
   id: string;
+  user_id: string; // 所有者ID
   name: string;
   goal: string;
   createdAt: number;
@@ -15,6 +17,7 @@ export interface Theme {
 
 export interface Insight {
   id: string;
+  user_id: string; // 所有者ID
   themeId: string;
   body: string;
   createdAt: number;
@@ -31,6 +34,7 @@ export interface ChatMessage {
 export interface Session {
   id: string;
   themeId: string;
+  user_id: string; // 所有者ID
   messages: ChatMessage[];
   startTime: number;
 }

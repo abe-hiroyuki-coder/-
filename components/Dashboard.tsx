@@ -10,11 +10,13 @@ interface DashboardProps {
   updateThemeGoal: (id: string, goal: string) => void;
   switchTheme: (id: string) => void;
   addInsight: (body: string, themeId: string) => void;
+  onLogout: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ state, currentTheme, addTheme, updateThemeGoal, switchTheme, addInsight }) => {
+const Dashboard: React.FC<DashboardProps> = ({ state, currentTheme, addTheme, updateThemeGoal, switchTheme, addInsight, onLogout }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [isEditingGoal, setIsEditingGoal] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [newName, setNewName] = useState('');
   const [newGoal, setNewGoal] = useState('');
   const [editGoalValue, setEditGoalValue] = useState('');
@@ -70,13 +72,35 @@ const Dashboard: React.FC<DashboardProps> = ({ state, currentTheme, addTheme, up
         </div>
       )}
 
-      <header className="flex justify-between items-center">
+      <header className="flex justify-between items-center relative z-20">
         <div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tighter leading-tight">
             こんにちは、<br/>{state.user.name}さん
           </h1>
         </div>
-        <div className="w-14 h-14 bg-indigo-600 rounded-3xl flex items-center justify-center text-white text-3xl shadow-xl float-animation">🐙</div>
+        <div className="relative">
+          <button 
+            onClick={() => setShowProfileMenu(!showProfileMenu)}
+            className="w-14 h-14 bg-indigo-600 rounded-3xl flex items-center justify-center text-white text-3xl shadow-xl float-animation transition-transform active:scale-90"
+          >
+            🐙
+          </button>
+          
+          {showProfileMenu && (
+            <div className="absolute right-0 mt-3 w-48 bg-white rounded-3xl shadow-2xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 origin-top-right">
+              <div className="px-4 py-3 border-b border-slate-50">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">User ID</p>
+                <p className="text-[8px] font-mono text-slate-300 break-all">{state.user.id}</p>
+              </div>
+              <button 
+                onClick={onLogout}
+                className="w-full text-left px-4 py-3 text-xs font-bold text-red-500 hover:bg-red-50 transition-colors"
+              >
+                ログアウト 🚪
+              </button>
+            </div>
+          )}
+        </div>
       </header>
 
       {currentTheme && (

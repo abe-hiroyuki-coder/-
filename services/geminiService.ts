@@ -1,13 +1,5 @@
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 
-// 安全に環境変数を取得するヘルパー
-const getApiKey = () => {
-  try {
-    return (globalThis as any).process?.env?.API_KEY || '';
-  } catch {
-    return '';
-  }
-};
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 
 const SYSTEM_INSTRUCTION = `
 あなたは「熟達っつぁん」というアプリの壁打ちパートナーです。
@@ -28,14 +20,8 @@ const SYSTEM_INSTRUCTION = `
  * チャットセッションを開始し、レスポンスをストリームで返します。
  */
 export async function* startChatStream(themeName: string, goal: string, history: { role: 'user' | 'model', text: string }[]) {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    yield "APIキーが設定されていません。環境変数をご確認ください。";
-    return;
-  }
-
-  // 最新のAPIキーを使用してインスタンスを作成（トップレベルでのエラーを回避）
-  const ai = new GoogleGenAI({ apiKey });
+  // Always initialize GoogleGenAI with { apiKey: process.env.API_KEY } as per guidelines
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const model = 'gemini-3-flash-preview';
   
   const chatHistory = history.slice(0, -1).map(m => ({
@@ -56,6 +42,7 @@ export async function* startChatStream(themeName: string, goal: string, history:
   try {
     const response = await chat.sendMessageStream({ message: lastMessage });
     for await (const chunk of response) {
+      // Correct access to generated text via the .text property
       const c = chunk as GenerateContentResponse;
       yield c.text || "";
     }
@@ -69,10 +56,8 @@ export async function* startChatStream(themeName: string, goal: string, history:
  * 会話内容から要点を抽出して「気づき」のリストを作成します。
  */
 export async function extractInsight(text: string): Promise<string[]> {
-  const apiKey = getApiKey();
-  if (!apiKey) return ["APIキーが設定されていません。"];
-
-  const ai = new GoogleGenAI({ apiKey });
+  // Always initialize GoogleGenAI with { apiKey: process.env.API_KEY } as per guidelines
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   try {
     const response = await ai.models.generateContent({
@@ -83,6 +68,7 @@ export async function extractInsight(text: string): Promise<string[]> {
       }
     });
     
+    // Correct access to generated text via the .text property
     const result = response.text || "";
     return result.split('\n').map(s => s.replace(/^[・-]\s*/, '').trim()).filter(Boolean);
   } catch (error) {

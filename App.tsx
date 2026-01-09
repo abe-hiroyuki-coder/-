@@ -19,6 +19,7 @@ const INITIAL_ACHIEVEMENTS: Achievement[] = [
 ];
 
 const INITIAL_USER: UserProfile = {
+  id: '',
   name: '',
   isLoggedIn: false,
   notificationFrequency: 'daily',
@@ -40,25 +41,33 @@ const App: React.FC = () => {
     };
   });
 
-  // 起動時にSupabaseからデータを読み込む
+  // 起動時およびユーザーログイン時にSupabaseから自分のデータのみ読み込む
   useEffect(() => {
     const fetchData = async () => {
-      if (!state.user.isLoggedIn) return;
+      if (!state.user.isLoggedIn || !state.user.id) return;
 
-      const { data: themes } = await supabase.from('themes').select('*');
-      const { data: insights } = await supabase.from('insights').select('*');
+      const { data: themes } = await supabase.from('themes').select('*').eq('user_id', state.user.id);
+      const { data: insights } = await supabase.from('insights').select('*').eq('user_id', state.user.id);
 
       if (themes || insights) {
         setState(prev => ({
           ...prev,
-          themes: themes || prev.themes,
-          insights: insights || prev.insights,
+          themes: themes ? themes.map((t: any) => ({ ...t, createdAt: t.created_at || Date.now() })) : prev.themes,
+          // Added user_id to correctly satisfy the Insight interface requirements
+          insights: insights ? insights.map((i: any) => ({ 
+            id: i.id, 
+            user_id: i.user_id,
+            themeId: i.theme_id, 
+            body: i.body, 
+            createdAt: i.created_at || Date.now(), 
+            linkedToIds: i.linked_to_ids || [] 
+          })) : prev.insights,
           currentThemeId: prev.currentThemeId || (themes && themes.length > 0 ? themes[0].id : null)
         }));
       }
     };
     fetchData();
-  }, [state.user.isLoggedIn]);
+  }, [state.user.isLoggedIn, state.user.id]);
 
   useEffect(() => {
     localStorage.setItem('jukutatsu_state', JSON.stringify(state));
@@ -72,18 +81,32 @@ const App: React.FC = () => {
     setState(prev => ({ ...prev, user: { ...userData, isLoggedIn: true } }));
   }, []);
 
+  const logout = useCallback(() => {
+    if (confirm("ログアウトしますか？（ブラウザのデータは保持されます）")) {
+      setState(prev => ({ ...prev, user: { ...INITIAL_USER, isLoggedIn: false } }));
+    }
+  }, []);
+
   const addTheme = useCallback(async (name: string, goal: string) => {
-    const newTheme = { id: crypto.randomUUID(), name, goal };
-    const { error } = await supabase.from('themes').insert([newTheme]);
+    if (!state.user.id) return;
+    const newThemeId = crypto.randomUUID();
+    const newThemeData = { 
+      id: newThemeId, 
+      user_id: state.user.id, 
+      name, 
+      goal 
+    };
+
+    const { error } = await supabase.from('themes').insert([newThemeData]);
     
     if (!error) {
       setState(prev => ({
         ...prev,
-        themes: [...prev.themes, { ...newTheme, createdAt: Date.now() }],
-        currentThemeId: newTheme.id
+        themes: [...prev.themes, { ...newThemeData, createdAt: Date.now() }],
+        currentThemeId: newThemeId
       }));
     }
-  }, []);
+  }, [state.user.id]);
 
   const updateThemeGoal = useCallback(async (id: string, goal: string) => {
     const { error } = await supabase.from('themes').update({ goal }).eq('id', id);
@@ -100,29 +123,34 @@ const App: React.FC = () => {
   }, []);
 
   const addInsight = useCallback(async (body: string, themeId: string, sessionId?: string) => {
-    if (!themeId) return;
-    const newInsight = {
-      id: crypto.randomUUID(),
+    if (!themeId || !state.user.id) return;
+    const newInsightId = crypto.randomUUID();
+    const newInsightData = {
+      id: newInsightId,
+      user_id: state.user.id,
       theme_id: themeId,
       body,
       linked_to_ids: []
     };
 
-    const { error } = await supabase.from('insights').insert([newInsight]);
+    const { error } = await supabase.from('insights').insert([newInsightData]);
 
     if (!error) {
       setState(prev => ({
         ...prev,
+        // Added user_id and sessionId to fix the TypeScript error where Insight properties were missing
         insights: [...prev.insights, { 
-          id: newInsight.id, 
+          id: newInsightId, 
+          user_id: state.user.id,
           themeId, 
           body, 
           createdAt: Date.now(), 
-          linkedToIds: [] 
+          linkedToIds: [],
+          sessionId
         }]
       }));
     }
-  }, []);
+  }, [state.user.id]);
 
   const deleteInsight = useCallback(async (id: string) => {
     const { error } = await supabase.from('insights').delete().eq('id', id);
@@ -182,7 +210,7 @@ const App: React.FC = () => {
         <main className="flex-1 overflow-hidden relative">
           <Routes>
             <Route path="/login" element={state.user.isLoggedIn ? <Navigate to="/" /> : <Auth onLogin={login} />} />
-            <Route path="/" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <Dashboard state={state} currentTheme={currentTheme} addTheme={addTheme} updateThemeGoal={updateThemeGoal} switchTheme={switchTheme} addInsight={addInsight} />} />
+            <Route path="/" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <Dashboard state={state} currentTheme={currentTheme} addTheme={addTheme} updateThemeGoal={updateThemeGoal} switchTheme={switchTheme} addInsight={addInsight} onLogout={logout} />} />
             <Route path="/chat" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <ChatSession currentTheme={currentTheme} addInsight={addInsight} persistedMessages={state.activeChatMessages} setPersistedMessages={setChatMessages} clearPersistedMessages={clearChat} />} />
             <Route path="/insights" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <InsightList insights={state.insights.filter(i => i.themeId === state.currentThemeId)} allInsights={state.insights} linkInsights={linkInsights} deleteInsight={deleteInsight} updateInsight={updateInsight} />} />
             <Route path="/graph" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <InsightGraph insights={state.insights.filter(i => i.themeId === state.currentThemeId)} />} />

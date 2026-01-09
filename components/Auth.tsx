@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { UserProfile } from '../types';
 import { supabase } from '../services/supabase';
@@ -16,6 +17,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     e.preventDefault();
     if (name.trim()) {
       onLogin({
+        id: crypto.randomUUID(), // デバイス固有のIDを生成
         name,
         isLoggedIn: true,
         notificationFrequency: freq,
