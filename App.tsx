@@ -11,7 +11,6 @@ import AchievementBadges from './components/AchievementBadges';
 import Auth from './components/Auth';
 import { supabase } from './services/supabase';
 
-// 堅牢なID生成器
 const generateId = () => {
   try {
     return crypto.randomUUID();
@@ -53,15 +52,20 @@ const App: React.FC = () => {
     };
   });
 
-  // データ同期関数（再利用可能に）
   const syncDataFromSupabase = useCallback(async (userId: string) => {
     if (!userId) return;
     try {
       const { data: themes } = await supabase.from('themes').select('*').eq('user_id', userId);
       const { data: insights } = await supabase.from('insights').select('*').eq('user_id', userId);
+      const { data: profiles } = await supabase.from('user_profiles').select('*').eq('id', userId).single();
 
       setState(prev => ({
         ...prev,
+        user: profiles ? {
+          ...prev.user,
+          notificationFrequency: profiles.notification_frequency,
+          notificationTime: profiles.notification_time
+        } : prev.user,
         themes: themes && themes.length > 0 
           ? themes.map((t: any) => ({ ...t, createdAt: t.created_at ? new Date(t.created_at).getTime() : Date.now() })) 
           : prev.themes,
@@ -82,14 +86,12 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // 起動時およびログイン状態変化時の同期
   useEffect(() => {
     if (state.user.isLoggedIn && state.user.id) {
       syncDataFromSupabase(state.user.id);
     }
   }, [state.user.isLoggedIn, state.user.id, syncDataFromSupabase]);
 
-  // ローカル保存
   useEffect(() => {
     localStorage.setItem('jukutatsu_state', JSON.stringify(state));
   }, [state]);
@@ -103,18 +105,34 @@ const App: React.FC = () => {
   }, []);
 
   const logout = useCallback(() => {
-    if (confirm("ログアウトしますか？")) {
-      setState(prev => ({ 
-        ...prev, 
+    if (confirm("ログアウトしますか？\n次回は同じユーザー名でログインすることで、記録を再開できます。")) {
+      setState({
         user: { ...INITIAL_USER, isLoggedIn: false },
         themes: [],
         insights: [],
         currentThemeId: null,
+        achievements: INITIAL_ACHIEVEMENTS,
+        sessions: [],
         activeChatMessages: []
-      }));
+      });
       localStorage.removeItem('jukutatsu_state');
     }
   }, []);
+
+  const updateUserProfile = useCallback(async (updates: Partial<UserProfile>) => {
+    setState(prev => ({
+      ...prev,
+      user: { ...prev.user, ...updates }
+    }));
+
+    if (state.user.id) {
+      const dbUpdates: any = {};
+      if (updates.notificationFrequency) dbUpdates.notification_frequency = updates.notificationFrequency;
+      if (updates.notificationTime) dbUpdates.notification_time = updates.notificationTime;
+      
+      await supabase.from('user_profiles').update(dbUpdates).eq('id', state.user.id);
+    }
+  }, [state.user.id]);
 
   const addTheme = useCallback(async (name: string, goal: string) => {
     const userId = state.user.id;
@@ -250,7 +268,7 @@ const App: React.FC = () => {
         <main className="flex-1 relative scroll-container">
           <Routes>
             <Route path="/login" element={state.user.isLoggedIn ? <Navigate to="/" /> : <Auth onLogin={login} />} />
-            <Route path="/" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <Dashboard state={state} currentTheme={currentTheme} addTheme={addTheme} updateThemeGoal={updateThemeGoal} switchTheme={switchTheme} addInsight={addInsight} onLogout={logout} />} />
+            <Route path="/" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <Dashboard state={state} currentTheme={currentTheme} addTheme={addTheme} updateThemeGoal={updateThemeGoal} switchTheme={switchTheme} addInsight={addInsight} onLogout={logout} onUpdateUser={updateUserProfile} />} />
             <Route path="/chat" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <ChatSession currentTheme={currentTheme} addInsight={addInsight} persistedMessages={state.activeChatMessages} setPersistedMessages={setChatMessages} clearPersistedMessages={clearChat} />} />
             <Route path="/insights" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <InsightList insights={state.insights.filter(i => i.themeId === state.currentThemeId)} allInsights={state.insights} linkInsights={linkInsights} deleteInsight={deleteInsight} updateInsight={updateInsight} />} />
             <Route path="/graph" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <InsightGraph insights={state.insights.filter(i => i.themeId === state.currentThemeId)} />} />

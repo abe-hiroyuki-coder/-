@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Theme, AppState } from '../types';
+import { Theme, AppState, UserProfile } from '../types';
 import { useNavigate } from 'react-router-dom';
 
 interface DashboardProps {
@@ -11,12 +11,22 @@ interface DashboardProps {
   switchTheme: (id: string) => void;
   addInsight: (body: string, themeId: string) => void;
   onLogout: () => void;
+  onUpdateUser: (updates: Partial<UserProfile>) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ state, currentTheme, addTheme, updateThemeGoal, switchTheme, addInsight, onLogout }) => {
+const Dashboard: React.FC<DashboardProps> = ({ 
+  state, 
+  currentTheme, 
+  addTheme, 
+  updateThemeGoal, 
+  switchTheme, 
+  addInsight, 
+  onLogout,
+  onUpdateUser
+}) => {
   const [isAdding, setIsAdding] = useState(false);
   const [isEditingGoal, setIsEditingGoal] = useState(false);
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [newGoal, setNewGoal] = useState('');
   const [editGoalValue, setEditGoalValue] = useState('');
@@ -50,19 +60,13 @@ const Dashboard: React.FC<DashboardProps> = ({ state, currentTheme, addTheme, up
 
   const handleCreateTheme = (e: React.FormEvent) => {
     e.preventDefault();
-    
     const trimmedName = newName.trim();
     const trimmedGoal = newGoal.trim();
-
     if (!trimmedName || !trimmedGoal) {
       alert("テーマ名と目標を入力してください。");
       return;
     }
-
-    // テーマ追加の実行
     addTheme(trimmedName, trimmedGoal);
-    
-    // UIのリセット
     setIsAdding(false);
     setNewName('');
     setNewGoal('');
@@ -100,28 +104,73 @@ const Dashboard: React.FC<DashboardProps> = ({ state, currentTheme, addTheme, up
         </div>
         <div className="relative">
           <button 
-            onClick={() => setShowProfileMenu(!showProfileMenu)}
+            onClick={() => setShowProfileModal(true)}
             className="w-14 h-14 bg-indigo-600 rounded-3xl flex items-center justify-center text-white text-3xl shadow-xl float-animation transition-transform active:scale-90"
           >
             🐙
           </button>
-          
-          {showProfileMenu && (
-            <div className="absolute right-0 mt-3 w-48 bg-white rounded-3xl shadow-2xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 origin-top-right">
-              <div className="px-4 py-3 border-b border-slate-50">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">User ID</p>
-                <p className="text-[8px] font-mono text-slate-300 break-all">{state.user.id || 'Not Set'}</p>
-              </div>
-              <button 
-                onClick={onLogout}
-                className="w-full text-left px-4 py-3 text-xs font-bold text-red-500 hover:bg-red-50 transition-colors"
-              >
-                ログアウト 🚪
-              </button>
-            </div>
-          )}
         </div>
       </header>
+
+      {/* Profile & Settings Modal */}
+      {showProfileModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setShowProfileModal(false)} />
+          <div className="bg-white w-full max-w-sm rounded-[48px] shadow-2xl relative z-10 p-8 space-y-8 animate-in zoom-in-95 duration-200">
+            <div className="text-center space-y-2">
+              <div className="w-16 h-16 bg-indigo-100 rounded-[28px] flex items-center justify-center text-3xl mx-auto">🐙</div>
+              <h2 className="text-xl font-black">{state.user.name}</h2>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Settings & Profile</p>
+            </div>
+
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">通知頻度</label>
+                <div className="flex gap-2">
+                  {(['daily', 'weekly', 'none'] as const).map(f => (
+                    <button
+                      key={f}
+                      onClick={() => onUpdateUser({ notificationFrequency: f })}
+                      className={`flex-1 py-3 rounded-2xl text-xs font-bold transition-all ${
+                        state.user.notificationFrequency === f ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-50 text-slate-400'
+                      }`}
+                    >
+                      {f === 'daily' ? '毎日' : f === 'weekly' ? '週次' : 'なし'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {state.user.notificationFrequency !== 'none' && (
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">通知時間</label>
+                  <input 
+                    type="time"
+                    value={state.user.notificationTime}
+                    onChange={(e) => onUpdateUser({ notificationTime: e.target.value })}
+                    className="w-full bg-slate-50 p-4 rounded-2xl text-center font-black text-xl outline-none ring-indigo-500 focus:ring-2 transition-all"
+                  />
+                </div>
+              )}
+
+              <div className="pt-4 border-t border-slate-100 space-y-3">
+                <button 
+                  onClick={() => { setShowProfileModal(false); onLogout(); }}
+                  className="w-full p-4 text-red-500 font-black text-sm rounded-2xl bg-red-50 active:scale-95 transition-transform"
+                >
+                  ログアウト 🚪
+                </button>
+                <button 
+                  onClick={() => setShowProfileModal(false)}
+                  className="w-full p-4 text-slate-400 font-bold text-sm"
+                >
+                  閉じる
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {currentTheme && (
         <section className="bg-white p-2 rounded-[32px] border-2 border-slate-100 shadow-sm focus-within:border-indigo-500 transition-all">
