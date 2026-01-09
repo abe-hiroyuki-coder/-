@@ -57,7 +57,7 @@ const App: React.FC = () => {
     };
   });
 
-  // ユーザーIDの整合性チェック（副作用で補完）
+  // ユーザーIDの整合性チェック
   useEffect(() => {
     if (state.user.isLoggedIn && !state.user.id) {
       const newId = generateId();
@@ -103,7 +103,6 @@ const App: React.FC = () => {
   , [state.themes, state.currentThemeId]);
 
   const login = useCallback((userData: UserProfile) => {
-    // ログイン時にもIDが確実に存在するように
     const userWithId = { ...userData, id: userData.id || generateId(), isLoggedIn: true };
     setState(prev => ({ ...prev, user: userWithId }));
   }, []);
@@ -115,7 +114,7 @@ const App: React.FC = () => {
   }, []);
 
   const addTheme = useCallback(async (name: string, goal: string) => {
-    const userId = state.user.id || generateId(); // フォールバックID
+    const userId = state.user.id || generateId();
     const newThemeId = generateId();
     const now = Date.now();
     
@@ -127,12 +126,11 @@ const App: React.FC = () => {
       createdAt: now
     };
 
-    // UIを即座に更新
     setState(prev => ({
       ...prev,
       themes: [...prev.themes, newTheme],
       currentThemeId: newThemeId,
-      user: prev.user.id ? prev.user : { ...prev.user, id: userId } // IDがなかった場合はステートも更新
+      user: prev.user.id ? prev.user : { ...prev.user, id: userId }
     }));
 
     try {
@@ -241,8 +239,15 @@ const App: React.FC = () => {
 
   return (
     <HashRouter>
-      {/* 画面全体のコンテナ: 100dvhでスマホのツールバーに対応 */}
-      <div className="flex flex-col h-[100dvh] w-full max-w-md mx-auto bg-white shadow-xl overflow-hidden relative">
+      {/* 
+        画面全体のコンテナ: 
+        JSで計算した実測高さ (var(--app-height)) を適用。
+        overflow-hidden を外し、万が一の場合にスクロールできるようにする。
+      */}
+      <div 
+        className="flex flex-col w-full max-w-md mx-auto bg-white shadow-xl relative"
+        style={{ height: 'var(--app-height)' }}
+      >
         <main className="flex-1 overflow-hidden relative scroll-container">
           <Routes>
             <Route path="/login" element={state.user.isLoggedIn ? <Navigate to="/" /> : <Auth onLogin={login} />} />
@@ -256,7 +261,13 @@ const App: React.FC = () => {
         </main>
         
         {state.user.isLoggedIn && (
-          <nav className="shrink-0 bg-white border-t border-slate-200 flex justify-around items-center px-2 shadow-[0_-1px_10px_rgba(0,0,0,0.05)] h-16 pb-safe">
+          <nav 
+            className="shrink-0 bg-white border-t border-slate-200 flex justify-around items-center px-2 shadow-[0_-1px_10px_rgba(0,0,0,0.05)]"
+            style={{ 
+              paddingBottom: 'env(safe-area-inset-bottom)', 
+              height: 'calc(4rem + env(safe-area-inset-bottom))' 
+            }}
+          >
             <NavLink to="/" icon="🏠" label="ホーム" />
             <NavLink to="/chat" icon="💬" label="壁打ち" />
             <NavLink to="/insights" icon="💡" label="気づき" />

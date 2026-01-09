@@ -10,6 +10,16 @@
         console.error("Global Error:", msg, "at", url, ":", line);
         return false;
       };
+
+      // 画面の高さを実測してCSS変数にセットする
+      const setAppHeight = () => {
+        const doc = document.documentElement;
+        doc.style.setProperty('--app-height', `${window.innerHeight}px`);
+      };
+      window.addEventListener('resize', setAppHeight);
+      window.addEventListener('orientationchange', setAppHeight);
+      document.addEventListener('DOMContentLoaded', setAppHeight);
+      setAppHeight();
     </script>
     <link rel="manifest" href="manifest.json">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -21,18 +31,17 @@
     <meta name="apple-mobile-web-app-title" content="熟達っつぁん">
     <style>
         :root {
-            --app-height: 100dvh;
+            --app-height: 100vh;
         }
         html, body {
-            height: var(--app-height);
+            height: 100%;
             width: 100%;
             margin: 0;
             padding: 0;
-            overflow: hidden; /* システム全体のスクロールを禁止 */
-            position: fixed; /* iOSでのバウンス防止 */
+            overflow: hidden; /* 背景のスクロールは防ぐ */
+            position: static; /* fixedを解除 */
             font-family: 'Inter', 'Noto Sans JP', sans-serif;
             background-color: #f8fafc;
-            /* タッチ操作の挙動を安定させる */
             overscroll-behavior: none;
             -webkit-overflow-scrolling: touch;
         }
@@ -54,10 +63,10 @@
         .scroll-container {
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
-            scrollbar-width: none; /* Firefox */
+            scrollbar-width: none;
         }
         .scroll-container::-webkit-scrollbar {
-            display: none; /* Chrome, Safari */
+            display: none;
         }
     </style>
 <script type="importmap">
