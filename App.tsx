@@ -242,13 +242,13 @@ const App: React.FC = () => {
       {/* 
         画面全体のコンテナ: 
         JSで計算した実測高さ (var(--app-height)) を適用。
-        overflow-hidden を外し、万が一の場合にスクロールできるようにする。
+        minHeight にすることで、コンテンツが溢れた際にスクロールを許容する。
       */}
       <div 
         className="flex flex-col w-full max-w-md mx-auto bg-white shadow-xl relative"
-        style={{ height: 'var(--app-height)' }}
+        style={{ minHeight: 'var(--app-height)' }}
       >
-        <main className="flex-1 overflow-hidden relative scroll-container">
+        <main className="flex-1 relative scroll-container">
           <Routes>
             <Route path="/login" element={state.user.isLoggedIn ? <Navigate to="/" /> : <Auth onLogin={login} />} />
             <Route path="/" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <Dashboard state={state} currentTheme={currentTheme} addTheme={addTheme} updateThemeGoal={updateThemeGoal} switchTheme={switchTheme} addInsight={addInsight} onLogout={logout} />} />

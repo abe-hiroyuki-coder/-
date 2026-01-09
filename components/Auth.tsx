@@ -67,7 +67,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="flex-1 flex flex-col justify-center p-8 space-y-12 bg-indigo-600 text-white overflow-y-auto">
+    <div className="flex-1 flex flex-col p-8 space-y-12 bg-indigo-600 text-white overflow-y-auto min-h-full scroll-container">
       <div className="text-center space-y-4 pt-8">
         <div className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-[40px] flex items-center justify-center text-5xl mx-auto shadow-2xl float-animation">
           🐙
@@ -79,7 +79,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6 pb-12">
+      <form onSubmit={handleSubmit} className="space-y-6 pb-12 flex-1">
         <div className="space-y-2">
           <label className="text-[10px] font-black uppercase tracking-widest text-indigo-200">あなたの名前</label>
           <input 
