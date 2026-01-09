@@ -1,8 +1,13 @@
-
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 
-// Always use named parameter for apiKey and direct process.env.API_KEY access
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// 安全に環境変数を取得するヘルパー
+const getApiKey = () => {
+  try {
+    return (globalThis as any).process?.env?.API_KEY || '';
+  } catch {
+    return '';
+  }
+};
 
 const SYSTEM_INSTRUCTION = `
 あなたは「熟達っつぁん」というアプリの壁打ちパートナーです。
@@ -21,13 +26,18 @@ const SYSTEM_INSTRUCTION = `
 
 /**
  * チャットセッションを開始し、レスポンスをストリームで返します。
- * 履歴を渡すことで、会話のコンテキストを維持します。
  */
 export async function* startChatStream(themeName: string, goal: string, history: { role: 'user' | 'model', text: string }[]) {
-  // Use gemini-3-flash-preview for basic conversation tasks
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    yield "APIキーが設定されていません。環境変数をご確認ください。";
+    return;
+  }
+
+  // 最新のAPIキーを使用してインスタンスを作成（トップレベルでのエラーを回避）
+  const ai = new GoogleGenAI({ apiKey });
   const model = 'gemini-3-flash-preview';
   
-  // Convert existing messages to the required parts format, excluding the most recent user message
   const chatHistory = history.slice(0, -1).map(m => ({
     role: m.role,
     parts: [{ text: m.text }]
@@ -38,20 +48,20 @@ export async function* startChatStream(themeName: string, goal: string, history:
     config: {
       systemInstruction: `${SYSTEM_INSTRUCTION}\n現在のテーマ: ${themeName}\n最終目標: ${goal}`,
     },
-    // Populate chat history to maintain conversation flow
     history: chatHistory,
   });
 
-  // The last message in history is the current prompt
   const lastMessage = history[history.length - 1]?.text || "セッションを開始しましょう。";
   
-  // Use sendMessageStream which only accepts the message parameter
-  const response = await chat.sendMessageStream({ message: lastMessage });
-  
-  for await (const chunk of response) {
-    // GenerateContentResponse features a text property, not a method
-    const c = chunk as GenerateContentResponse;
-    yield c.text || "";
+  try {
+    const response = await chat.sendMessageStream({ message: lastMessage });
+    for await (const chunk of response) {
+      const c = chunk as GenerateContentResponse;
+      yield c.text || "";
+    }
+  } catch (error) {
+    console.error("Gemini Stream Error:", error);
+    yield "申し訳ありません、通信中にエラーが発生しました。";
   }
 }
 
@@ -59,15 +69,24 @@ export async function* startChatStream(themeName: string, goal: string, history:
  * 会話内容から要点を抽出して「気づき」のリストを作成します。
  */
 export async function extractInsight(text: string): Promise<string[]> {
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: `以下の会話から、ユーザーが得た重要な「気づき」や「次の一手」を短文で抽出してください。\n\n会話：\n${text}`,
-    config: {
-      systemInstruction: "箇条書きで、核心を突いた短い一文に整形してください。余計な解説は不要です。",
-    }
-  });
+  const apiKey = getApiKey();
+  if (!apiKey) return ["APIキーが設定されていません。"];
+
+  const ai = new GoogleGenAI({ apiKey });
   
-  // response.text is a property
-  const result = response.text || "";
-  return result.split('\n').map(s => s.replace(/^[・-]\s*/, '').trim()).filter(Boolean);
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `以下の会話から、ユーザーが得た重要な「気づき」や「次の一手」を短文で抽出してください。\n\n会話：\n${text}`,
+      config: {
+        systemInstruction: "箇条書きで、核心を突いた短い一文に整形してください。余計な解説は不要です。",
+      }
+    });
+    
+    const result = response.text || "";
+    return result.split('\n').map(s => s.replace(/^[・-]\s*/, '').trim()).filter(Boolean);
+  } catch (error) {
+    console.error("Gemini Extract Error:", error);
+    return ["気づきの抽出に失敗しました。"];
+  }
 }
