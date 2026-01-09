@@ -1,0 +1,7 @@
+{
+  "name": "熟達っつぁん (Jukutatsu-tsan)",
+  "description": "思考・仮説・反省を言語化し、あなたの『思考の地図』を育てる熟達支援PWAアプリ。AIが壁打ち相手となり、気づきを構造化します。",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
