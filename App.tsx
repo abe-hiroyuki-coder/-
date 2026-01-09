@@ -9,6 +9,7 @@ import InsightGraph from './components/InsightGraph';
 import WeeklyReview from './components/WeeklyReview';
 import AchievementBadges from './components/AchievementBadges';
 import Auth from './components/Auth';
+import { supabase } from './services/supabase';
 
 const INITIAL_ACHIEVEMENTS: Achievement[] = [
   { id: 'first_insight', title: '初めの一歩', description: '最初の気づきを記録した', icon: '🌱' },
@@ -22,14 +23,6 @@ const INITIAL_USER: UserProfile = {
   isLoggedIn: false,
   notificationFrequency: 'daily',
   notificationTime: '21:00'
-};
-
-const RouteLogger: React.FC = () => {
-  const location = useLocation();
-  useEffect(() => {
-    console.log("📍 Route Changed to:", location.pathname, "| Time:", new Date().toLocaleTimeString());
-  }, [location]);
-  return null;
 };
 
 const App: React.FC = () => {
@@ -47,6 +40,26 @@ const App: React.FC = () => {
     };
   });
 
+  // 起動時にSupabaseからデータを読み込む
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!state.user.isLoggedIn) return;
+
+      const { data: themes } = await supabase.from('themes').select('*');
+      const { data: insights } = await supabase.from('insights').select('*');
+
+      if (themes || insights) {
+        setState(prev => ({
+          ...prev,
+          themes: themes || prev.themes,
+          insights: insights || prev.insights,
+          currentThemeId: prev.currentThemeId || (themes && themes.length > 0 ? themes[0].id : null)
+        }));
+      }
+    };
+    fetchData();
+  }, [state.user.isLoggedIn]);
+
   useEffect(() => {
     localStorage.setItem('jukutatsu_state', JSON.stringify(state));
   }, [state]);
@@ -59,85 +72,104 @@ const App: React.FC = () => {
     setState(prev => ({ ...prev, user: { ...userData, isLoggedIn: true } }));
   }, []);
 
-  const addTheme = useCallback((name: string, goal: string) => {
-    const newTheme: Theme = { id: crypto.randomUUID(), name, goal, createdAt: Date.now() };
-    setState(prev => ({
-      ...prev,
-      themes: [...prev.themes, newTheme],
-      currentThemeId: newTheme.id,
-      achievements: prev.achievements.map(a => 
-        a.id === 'theme_creator' && !a.unlockedAt ? { ...a, unlockedAt: Date.now() } : a
-      )
-    }));
+  const addTheme = useCallback(async (name: string, goal: string) => {
+    const newTheme = { id: crypto.randomUUID(), name, goal };
+    const { error } = await supabase.from('themes').insert([newTheme]);
+    
+    if (!error) {
+      setState(prev => ({
+        ...prev,
+        themes: [...prev.themes, { ...newTheme, createdAt: Date.now() }],
+        currentThemeId: newTheme.id
+      }));
+    }
   }, []);
 
-  const updateThemeGoal = useCallback((id: string, goal: string) => {
-    setState(prev => ({
-      ...prev,
-      themes: prev.themes.map(t => t.id === id ? { ...t, goal } : t)
-    }));
+  const updateThemeGoal = useCallback(async (id: string, goal: string) => {
+    const { error } = await supabase.from('themes').update({ goal }).eq('id', id);
+    if (!error) {
+      setState(prev => ({
+        ...prev,
+        themes: prev.themes.map(t => t.id === id ? { ...t, goal } : t)
+      }));
+    }
   }, []);
 
   const switchTheme = useCallback((id: string) => {
     setState(prev => ({ ...prev, currentThemeId: id, activeChatMessages: [] }));
   }, []);
 
-  const addInsight = useCallback((body: string, themeId: string, sessionId?: string) => {
+  const addInsight = useCallback(async (body: string, themeId: string, sessionId?: string) => {
     if (!themeId) return;
-    const newInsight: Insight = {
+    const newInsight = {
       id: crypto.randomUUID(),
-      themeId,
+      theme_id: themeId,
       body,
-      createdAt: Date.now(),
-      sessionId,
-      linkedToIds: []
+      linked_to_ids: []
     };
-    setState(prev => {
-      const newInsights = [...prev.insights, newInsight];
-      let newAchievements = [...prev.achievements];
-      if (newInsights.length === 1) newAchievements = newAchievements.map(a => a.id === 'first_insight' ? { ...a, unlockedAt: Date.now() } : a);
-      if (newInsights.length === 10) newAchievements = newAchievements.map(a => a.id === '10_insights' ? { ...a, unlockedAt: Date.now() } : a);
-      return { ...prev, insights: newInsights, achievements: newAchievements };
-    });
+
+    const { error } = await supabase.from('insights').insert([newInsight]);
+
+    if (!error) {
+      setState(prev => ({
+        ...prev,
+        insights: [...prev.insights, { 
+          id: newInsight.id, 
+          themeId, 
+          body, 
+          createdAt: Date.now(), 
+          linkedToIds: [] 
+        }]
+      }));
+    }
   }, []);
 
-  const deleteInsight = useCallback((id: string) => {
-    setState(prev => ({
-      ...prev,
-      insights: prev.insights.filter(i => i.id !== id).map(i => ({
-        ...i, linkedToIds: i.linkedToIds.filter(lid => lid !== id)
-      }))
-    }));
+  const deleteInsight = useCallback(async (id: string) => {
+    const { error } = await supabase.from('insights').delete().eq('id', id);
+    if (!error) {
+      setState(prev => ({
+        ...prev,
+        insights: prev.insights.filter(i => i.id !== id)
+      }));
+    }
   }, []);
 
-  const updateInsight = useCallback((id: string, newBody: string) => {
-    setState(prev => ({
-      ...prev,
-      insights: prev.insights.map(i => i.id === id ? { ...i, body: newBody } : i)
-    }));
+  const updateInsight = useCallback(async (id: string, body: string) => {
+    const { error } = await supabase.from('insights').update({ body }).eq('id', id);
+    if (!error) {
+      setState(prev => ({
+        ...prev,
+        insights: prev.insights.map(i => i.id === id ? { ...i, body } : i)
+      }));
+    }
   }, []);
 
-  const linkInsights = useCallback((id1: string, id2: string) => {
+  const linkInsights = useCallback(async (id1: string, id2: string) => {
+    const ins1 = state.insights.find(i => i.id === id1);
+    const ins2 = state.insights.find(i => i.id === id2);
+    if (!ins1 || !ins2) return;
+
+    const newLinks1 = Array.from(new Set([...ins1.linkedToIds, id2]));
+    const newLinks2 = Array.from(new Set([...ins2.linkedToIds, id1]));
+
+    await supabase.from('insights').update({ linked_to_ids: newLinks1 }).eq('id', id1);
+    await supabase.from('insights').update({ linked_to_ids: newLinks2 }).eq('id', id2);
+
     setState(prev => ({
       ...prev,
       insights: prev.insights.map(ins => {
-        if (ins.id === id1 && !ins.linkedToIds.includes(id2)) return { ...ins, linkedToIds: [...ins.linkedToIds, id2] };
-        if (ins.id === id2 && !ins.linkedToIds.includes(id1)) return { ...ins, linkedToIds: [...ins.linkedToIds, id1] };
+        if (ins.id === id1) return { ...ins, linkedToIds: newLinks1 };
+        if (ins.id === id2) return { ...ins, linkedToIds: newLinks2 };
         return ins;
-      }),
-      achievements: prev.achievements.map(a => 
-        a.id === 'first_link' && !a.unlockedAt ? { ...a, unlockedAt: Date.now() } : a
-      )
+      })
     }));
-  }, []);
+  }, [state.insights]);
 
-  // Update setChatMessages to handle functional updates
   const setChatMessages = useCallback((update: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
-    setState(prev => {
-      const nextMessages = typeof update === 'function' ? update(prev.activeChatMessages) : update;
-      if (JSON.stringify(prev.activeChatMessages) === JSON.stringify(nextMessages)) return prev;
-      return { ...prev, activeChatMessages: nextMessages };
-    });
+    setState(prev => ({
+      ...prev,
+      activeChatMessages: typeof update === 'function' ? update(prev.activeChatMessages) : update
+    }));
   }, []);
 
   const clearChat = useCallback(() => {
@@ -146,7 +178,6 @@ const App: React.FC = () => {
 
   return (
     <HashRouter>
-      <RouteLogger />
       <div className="relative h-screen max-w-md mx-auto bg-white shadow-xl overflow-hidden flex flex-col">
         <main className="flex-1 overflow-hidden relative">
           <Routes>
@@ -161,9 +192,7 @@ const App: React.FC = () => {
         </main>
         
         {state.user.isLoggedIn && (
-          <nav 
-            className="relative z-[9999] h-16 shrink-0 bg-white border-t border-slate-200 flex justify-around items-center px-2 pointer-events-auto shadow-[0_-1px_10px_rgba(0,0,0,0.05)]"
-          >
+          <nav className="relative z-[9999] h-16 shrink-0 bg-white border-t border-slate-200 flex justify-around items-center px-2 pointer-events-auto shadow-[0_-1px_10px_rgba(0,0,0,0.05)]">
             <NavLink to="/" icon="🏠" label="ホーム" />
             <NavLink to="/chat" icon="💬" label="壁打ち" />
             <NavLink to="/insights" icon="💡" label="気づき" />
@@ -180,10 +209,7 @@ const NavLink: React.FC<{ to: string, icon: string, label: string }> = ({ to, ic
   const location = useLocation();
   const isActive = location.pathname === to;
   return (
-    <Link 
-      to={to} 
-      className={`flex flex-col items-center gap-1 transition-all py-1 px-4 active:scale-95 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}
-    >
+    <Link to={to} className={`flex flex-col items-center gap-1 transition-all py-1 px-4 active:scale-95 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}>
       <span className="text-xl leading-none">{icon}</span>
       <span className="text-[10px] font-black uppercase tracking-tighter leading-none">{label}</span>
     </Link>

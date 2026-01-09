@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { UserProfile } from '../types';
+import { supabase } from '../services/supabase';
 
 interface AuthProps {
   onLogin: (user: UserProfile) => void;
@@ -26,7 +27,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
   const requestNotificationPermission = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      alert('プッシュ通知はこのブラウザではサポートされていません。');
+      console.log('Push not supported');
       return;
     }
 
@@ -35,10 +36,24 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       const permission = await Notification.requestPermission();
       if (permission === 'granted') {
         const registration = await navigator.serviceWorker.ready;
-        // 実際にはここで VAPID公開鍵を使って購読を作成し、Supabaseに保存する
-        // const subscription = await registration.pushManager.subscribe({...});
-        // await saveSubscriptionToSupabase(subscription);
-        console.log('Push subscription successful (simulated)');
+        
+        // VAPID Public Key を環境変数から取得（クライアント側で利用可能にするには NEXT_PUBLIC_ プレフィックスが必要）
+        const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+        
+        if (vapidPublicKey) {
+          const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: vapidPublicKey
+          });
+
+          // Supabaseに購読情報を保存
+          await supabase.from('push_subscriptions').insert([{
+            user_id: name || 'anonymous',
+            subscription: subscription
+          }]);
+          
+          console.log('Push subscription saved to Supabase');
+        }
       }
     } catch (err) {
       console.error('Failed to subscribe to push', err);
@@ -79,7 +94,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               <button
                 key={f}
                 type="button"
-                onClick={() => { setFreq(f); if (f !== 'none') requestNotificationPermission(); }}
+                onClick={() => { setFreq(f); }}
                 className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
                   freq === f ? 'bg-white text-indigo-600' : 'bg-white/10 text-white'
                 }`}
@@ -89,14 +104,23 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             ))}
           </div>
           {freq !== 'none' && (
-            <div className="flex items-center justify-between mt-4 border-t border-white/10 pt-4">
-              <span className="text-xs font-bold">通知タイミング</span>
-              <input 
-                type="time" 
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-                className="bg-transparent font-bold outline-none"
-              />
+            <div className="flex flex-col gap-4 mt-4 border-t border-white/10 pt-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold">通知タイミング</span>
+                <input 
+                  type="time" 
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                  className="bg-transparent font-bold outline-none"
+                />
+              </div>
+              <button 
+                type="button"
+                onClick={requestNotificationPermission}
+                className="text-[10px] bg-white/20 hover:bg-white/30 py-2 rounded-lg font-black uppercase tracking-tighter transition-colors"
+              >
+                通知を許可する 🔔
+              </button>
             </div>
           )}
         </div>
