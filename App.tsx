@@ -40,7 +40,7 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('jukutatsu_state');
     if (saved) {
       const parsed = JSON.parse(saved);
-      // 旧バージョンからの移行：IDがない場合は付与
+      // 旧バージョンからの移行：ログイン中なのにIDがない場合は付与
       if (parsed.user && parsed.user.isLoggedIn && !parsed.user.id) {
         parsed.user.id = generateId();
       }
@@ -56,6 +56,14 @@ const App: React.FC = () => {
       activeChatMessages: []
     };
   });
+
+  // ユーザーIDの整合性チェック（副作用で補完）
+  useEffect(() => {
+    if (state.user.isLoggedIn && !state.user.id) {
+      const newId = generateId();
+      setState(prev => ({ ...prev, user: { ...prev.user, id: newId } }));
+    }
+  }, [state.user.isLoggedIn, state.user.id]);
 
   // データ同期
   useEffect(() => {
@@ -95,7 +103,9 @@ const App: React.FC = () => {
   , [state.themes, state.currentThemeId]);
 
   const login = useCallback((userData: UserProfile) => {
-    setState(prev => ({ ...prev, user: { ...userData, isLoggedIn: true } }));
+    // ログイン時にもIDが確実に存在するように
+    const userWithId = { ...userData, id: userData.id || generateId(), isLoggedIn: true };
+    setState(prev => ({ ...prev, user: userWithId }));
   }, []);
 
   const logout = useCallback(() => {
@@ -105,39 +115,36 @@ const App: React.FC = () => {
   }, []);
 
   const addTheme = useCallback(async (name: string, goal: string) => {
-    if (!state.user.id) {
-      console.error("Theme creation failed: user.id is missing");
-      return;
-    }
-    
+    const userId = state.user.id || generateId(); // フォールバックID
     const newThemeId = generateId();
     const now = Date.now();
+    
     const newTheme: Theme = { 
       id: newThemeId, 
-      user_id: state.user.id, 
+      user_id: userId, 
       name, 
       goal,
       createdAt: now
     };
 
-    // 1. ローカルに即時反映（UIの反応を最優先）
+    // UIを即座に更新
     setState(prev => ({
       ...prev,
       themes: [...prev.themes, newTheme],
-      currentThemeId: newThemeId
+      currentThemeId: newThemeId,
+      user: prev.user.id ? prev.user : { ...prev.user, id: userId } // IDがなかった場合はステートも更新
     }));
 
-    // 2. サーバー同期（非同期）
     try {
       await supabase.from('themes').insert([{
         id: newThemeId,
-        user_id: state.user.id,
+        user_id: userId,
         name,
         goal,
         created_at: new Date(now).toISOString()
       }]);
     } catch (err) {
-      console.error("Supabase theme insert error:", err);
+      console.error("Supabase sync error:", err);
     }
   }, [state.user.id]);
 
@@ -154,13 +161,14 @@ const App: React.FC = () => {
   }, []);
 
   const addInsight = useCallback(async (body: string, themeId: string, sessionId?: string) => {
-    if (!themeId || !state.user.id) return;
+    if (!themeId) return;
+    const userId = state.user.id || generateId();
     const newInsightId = generateId();
     const now = Date.now();
     
     const newInsight: Insight = { 
       id: newInsightId, 
-      user_id: state.user.id,
+      user_id: userId,
       themeId, 
       body, 
       createdAt: now, 
@@ -175,7 +183,7 @@ const App: React.FC = () => {
 
     await supabase.from('insights').insert([{
       id: newInsightId,
-      user_id: state.user.id,
+      user_id: userId,
       theme_id: themeId,
       body,
       linked_to_ids: [],
@@ -233,8 +241,9 @@ const App: React.FC = () => {
 
   return (
     <HashRouter>
-      <div className="flex flex-col h-full w-full max-w-md mx-auto bg-white shadow-xl overflow-hidden relative">
-        <main className="flex-1 overflow-hidden relative">
+      {/* 画面全体のコンテナ: 100dvhでスマホのツールバーに対応 */}
+      <div className="flex flex-col h-[100dvh] w-full max-w-md mx-auto bg-white shadow-xl overflow-hidden relative">
+        <main className="flex-1 overflow-hidden relative scroll-container">
           <Routes>
             <Route path="/login" element={state.user.isLoggedIn ? <Navigate to="/" /> : <Auth onLogin={login} />} />
             <Route path="/" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <Dashboard state={state} currentTheme={currentTheme} addTheme={addTheme} updateThemeGoal={updateThemeGoal} switchTheme={switchTheme} addInsight={addInsight} onLogout={logout} />} />
@@ -247,7 +256,7 @@ const App: React.FC = () => {
         </main>
         
         {state.user.isLoggedIn && (
-          <nav className="shrink-0 bg-white border-t border-slate-200 flex justify-around items-center px-2 shadow-[0_-1px_10px_rgba(0,0,0,0.05)] pb-safe h-[calc(4rem+env(safe-area-inset-bottom))]">
+          <nav className="shrink-0 bg-white border-t border-slate-200 flex justify-around items-center px-2 shadow-[0_-1px_10px_rgba(0,0,0,0.05)] h-16 pb-safe">
             <NavLink to="/" icon="🏠" label="ホーム" />
             <NavLink to="/chat" icon="💬" label="壁打ち" />
             <NavLink to="/insights" icon="💡" label="気づき" />

@@ -32,6 +32,9 @@
             position: fixed; /* iOSでのバウンス防止 */
             font-family: 'Inter', 'Noto Sans JP', sans-serif;
             background-color: #f8fafc;
+            /* タッチ操作の挙動を安定させる */
+            overscroll-behavior: none;
+            -webkit-overflow-scrolling: touch;
         }
         #root {
             height: 100%;
@@ -47,9 +50,14 @@
         .float-animation {
             animation: float 3s ease-in-out infinite;
         }
-        /* セーフエリア対応のパディング */
-        .pb-safe {
-            padding-bottom: env(safe-area-inset-bottom);
+        /* スクロール可能なエリアのためのクラス */
+        .scroll-container {
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none; /* Firefox */
+        }
+        .scroll-container::-webkit-scrollbar {
+            display: none; /* Chrome, Safari */
         }
     </style>
 <script type="importmap">

@@ -50,19 +50,19 @@ const Dashboard: React.FC<DashboardProps> = ({ state, currentTheme, addTheme, up
 
   const handleCreateTheme = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Submit handleCreateTheme called", { newName, newGoal, userId: state.user.id });
     
-    if (!newName.trim() || !newGoal.trim()) {
+    const trimmedName = newName.trim();
+    const trimmedGoal = newGoal.trim();
+
+    if (!trimmedName || !trimmedGoal) {
       alert("テーマ名と目標を入力してください。");
       return;
     }
 
-    if (!state.user.id) {
-      alert("ユーザーIDが正しく設定されていません。一度ログアウトして再ログインしてください。");
-      return;
-    }
-
-    addTheme(newName, newGoal);
+    // テーマ追加の実行
+    addTheme(trimmedName, trimmedGoal);
+    
+    // UIのリセット
     setIsAdding(false);
     setNewName('');
     setNewGoal('');
@@ -85,7 +85,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, currentTheme, addTheme, up
   };
 
   return (
-    <div className="p-6 pb-20 space-y-8 h-full overflow-y-auto relative bg-slate-50">
+    <div className="p-6 pb-24 space-y-8 h-full overflow-y-auto scroll-container relative bg-slate-50">
       {showToast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-slate-900 text-white px-6 py-3 rounded-full text-xs font-bold shadow-xl animate-in fade-in slide-in-from-top-2">
           💡 保存しました
@@ -215,15 +215,32 @@ const Dashboard: React.FC<DashboardProps> = ({ state, currentTheme, addTheme, up
             onSubmit={handleCreateTheme}
             className="bg-white w-full p-8 rounded-[48px] shadow-2xl space-y-6 animate-in slide-in-from-bottom-10"
           >
-            <h2 className="text-2xl font-black">新しいテーマ</h2>
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-black">新しいテーマ</h2>
+              <button type="button" onClick={() => setIsAdding(false)} className="text-slate-300 hover:text-slate-600">×</button>
+            </div>
             <div className="space-y-4">
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1 px-1">テーマ名</label>
-                <input autoFocus required value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold focus:ring-2 ring-indigo-500 transition-all" placeholder="例：英語のスピーキング" />
+                <input 
+                  autoFocus 
+                  required 
+                  value={newName} 
+                  onChange={(e) => setNewName(e.target.value)} 
+                  className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold focus:ring-2 ring-indigo-500 transition-all" 
+                  placeholder="例：英語のスピーキング" 
+                />
               </div>
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1 px-1">目標</label>
-                <textarea required value={newGoal} onChange={(e) => setNewGoal(e.target.value)} rows={3} className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-medium focus:ring-2 ring-indigo-500 transition-all" placeholder="どんな状態を目指しますか？" />
+                <textarea 
+                  required 
+                  value={newGoal} 
+                  onChange={(e) => setNewGoal(e.target.value)} 
+                  rows={3} 
+                  className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-medium focus:ring-2 ring-indigo-500 transition-all" 
+                  placeholder="どんな状態を目指しますか？" 
+                />
               </div>
             </div>
             <div className="flex gap-3">
