@@ -20,6 +20,15 @@
       window.addEventListener('orientationchange', setAppHeight);
       document.addEventListener('DOMContentLoaded', setAppHeight);
       setAppHeight();
+
+      // PWA Service Worker の登録
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('SW registered:', reg))
+            .catch(err => console.log('SW register error:', err));
+        });
+      }
     </script>
     <link rel="manifest" href="manifest.json">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -38,7 +47,7 @@
             width: 100%;
             margin: 0;
             padding: 0;
-            overflow: auto; /* 一旦 auto にして詰まりを解消 */
+            overflow: auto;
             position: static;
             font-family: 'Inter', 'Noto Sans JP', sans-serif;
             background-color: #f8fafc;
@@ -46,7 +55,7 @@
             -webkit-overflow-scrolling: touch;
         }
         #root {
-            height: var(--app-height); /* 実測高さに合わせる */
+            height: var(--app-height);
             width: 100%;
             display: flex;
             flex-direction: column;
@@ -59,7 +68,6 @@
         .float-animation {
             animation: float 3s ease-in-out infinite;
         }
-        /* スクロール可能なエリアのためのクラス */
         .scroll-container {
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;

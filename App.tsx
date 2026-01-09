@@ -40,10 +40,6 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('jukutatsu_state');
     if (saved) {
       const parsed = JSON.parse(saved);
-      // 旧バージョンからの移行：ログイン中なのにIDがない場合は付与
-      if (parsed.user && parsed.user.isLoggedIn && !parsed.user.id) {
-        parsed.user.id = generateId();
-      }
       return parsed;
     }
     return {
@@ -57,43 +53,43 @@ const App: React.FC = () => {
     };
   });
 
-  // ユーザーIDの整合性チェック
-  useEffect(() => {
-    if (state.user.isLoggedIn && !state.user.id) {
-      const newId = generateId();
-      setState(prev => ({ ...prev, user: { ...prev.user, id: newId } }));
+  // データ同期関数（再利用可能に）
+  const syncDataFromSupabase = useCallback(async (userId: string) => {
+    if (!userId) return;
+    try {
+      const { data: themes } = await supabase.from('themes').select('*').eq('user_id', userId);
+      const { data: insights } = await supabase.from('insights').select('*').eq('user_id', userId);
+
+      setState(prev => ({
+        ...prev,
+        themes: themes && themes.length > 0 
+          ? themes.map((t: any) => ({ ...t, createdAt: t.created_at ? new Date(t.created_at).getTime() : Date.now() })) 
+          : prev.themes,
+        insights: insights && insights.length > 0 
+          ? insights.map((i: any) => ({ 
+              id: i.id, 
+              user_id: i.user_id,
+              themeId: i.theme_id, 
+              body: i.body, 
+              createdAt: i.created_at ? new Date(i.created_at).getTime() : Date.now(), 
+              linkedToIds: i.linked_to_ids || [] 
+            })) 
+          : prev.insights,
+        currentThemeId: prev.currentThemeId || (themes && themes.length > 0 ? themes[0].id : null)
+      }));
+    } catch (err) {
+      console.warn("Supabase Sync Error:", err);
     }
-  }, [state.user.isLoggedIn, state.user.id]);
+  }, []);
 
-  // データ同期
+  // 起動時およびログイン状態変化時の同期
   useEffect(() => {
-    const fetchData = async () => {
-      if (!state.user.isLoggedIn || !state.user.id) return;
+    if (state.user.isLoggedIn && state.user.id) {
+      syncDataFromSupabase(state.user.id);
+    }
+  }, [state.user.isLoggedIn, state.user.id, syncDataFromSupabase]);
 
-      try {
-        const { data: themes } = await supabase.from('themes').select('*').eq('user_id', state.user.id);
-        const { data: insights } = await supabase.from('insights').select('*').eq('user_id', state.user.id);
-
-        setState(prev => ({
-          ...prev,
-          themes: themes && themes.length > 0 ? themes.map((t: any) => ({ ...t, createdAt: t.created_at ? new Date(t.created_at).getTime() : Date.now() })) : prev.themes,
-          insights: insights && insights.length > 0 ? insights.map((i: any) => ({ 
-            id: i.id, 
-            user_id: i.user_id,
-            themeId: i.theme_id, 
-            body: i.body, 
-            createdAt: i.created_at ? new Date(i.created_at).getTime() : Date.now(), 
-            linkedToIds: i.linked_to_ids || [] 
-          })) : prev.insights,
-          currentThemeId: prev.currentThemeId || (themes && themes.length > 0 ? themes[0].id : null)
-        }));
-      } catch (err) {
-        console.warn("Supabase Fetch Error:", err);
-      }
-    };
-    fetchData();
-  }, [state.user.isLoggedIn, state.user.id]);
-
+  // ローカル保存
   useEffect(() => {
     localStorage.setItem('jukutatsu_state', JSON.stringify(state));
   }, [state]);
@@ -103,18 +99,27 @@ const App: React.FC = () => {
   , [state.themes, state.currentThemeId]);
 
   const login = useCallback((userData: UserProfile) => {
-    const userWithId = { ...userData, id: userData.id || generateId(), isLoggedIn: true };
-    setState(prev => ({ ...prev, user: userWithId }));
+    setState(prev => ({ ...prev, user: userData }));
   }, []);
 
   const logout = useCallback(() => {
     if (confirm("ログアウトしますか？")) {
-      setState(prev => ({ ...prev, user: { ...INITIAL_USER, isLoggedIn: false } }));
+      setState(prev => ({ 
+        ...prev, 
+        user: { ...INITIAL_USER, isLoggedIn: false },
+        themes: [],
+        insights: [],
+        currentThemeId: null,
+        activeChatMessages: []
+      }));
+      localStorage.removeItem('jukutatsu_state');
     }
   }, []);
 
   const addTheme = useCallback(async (name: string, goal: string) => {
-    const userId = state.user.id || generateId();
+    const userId = state.user.id;
+    if (!userId) return;
+
     const newThemeId = generateId();
     const now = Date.now();
     
@@ -129,8 +134,7 @@ const App: React.FC = () => {
     setState(prev => ({
       ...prev,
       themes: [...prev.themes, newTheme],
-      currentThemeId: newThemeId,
-      user: prev.user.id ? prev.user : { ...prev.user, id: userId }
+      currentThemeId: newThemeId
     }));
 
     try {
@@ -160,7 +164,7 @@ const App: React.FC = () => {
 
   const addInsight = useCallback(async (body: string, themeId: string, sessionId?: string) => {
     if (!themeId) return;
-    const userId = state.user.id || generateId();
+    const userId = state.user.id;
     const newInsightId = generateId();
     const now = Date.now();
     
@@ -239,11 +243,6 @@ const App: React.FC = () => {
 
   return (
     <HashRouter>
-      {/* 
-        画面全体のコンテナ: 
-        JSで計算した実測高さ (var(--app-height)) を適用。
-        minHeight にすることで、コンテンツが溢れた際にスクロールを許容する。
-      */}
       <div 
         className="flex flex-col w-full max-w-md mx-auto bg-white shadow-xl relative"
         style={{ minHeight: 'var(--app-height)' }}
