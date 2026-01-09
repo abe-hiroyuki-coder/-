@@ -11,6 +11,15 @@ import AchievementBadges from './components/AchievementBadges';
 import Auth from './components/Auth';
 import { supabase } from './services/supabase';
 
+// 堅牢なID生成器
+const generateId = () => {
+  try {
+    return crypto.randomUUID();
+  } catch (e) {
+    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  }
+};
+
 const INITIAL_ACHIEVEMENTS: Achievement[] = [
   { id: 'first_insight', title: '初めの一歩', description: '最初の気づきを記録した', icon: '🌱' },
   { id: '10_insights', title: '探究者', description: '10個の気づきを記録した', icon: '🔍' },
@@ -29,7 +38,14 @@ const INITIAL_USER: UserProfile = {
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>(() => {
     const saved = localStorage.getItem('jukutatsu_state');
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // 旧バージョンからの移行：IDがない場合は付与
+      if (parsed.user && parsed.user.isLoggedIn && !parsed.user.id) {
+        parsed.user.id = generateId();
+      }
+      return parsed;
+    }
     return {
       user: INITIAL_USER,
       themes: [],
@@ -41,7 +57,7 @@ const App: React.FC = () => {
     };
   });
 
-  // 起動時およびユーザーログイン時にSupabaseから自分のデータのみ読み込む
+  // データ同期
   useEffect(() => {
     const fetchData = async () => {
       if (!state.user.isLoggedIn || !state.user.id) return;
@@ -52,19 +68,19 @@ const App: React.FC = () => {
 
         setState(prev => ({
           ...prev,
-          themes: themes && themes.length > 0 ? themes.map((t: any) => ({ ...t, createdAt: t.created_at || Date.now() })) : prev.themes,
+          themes: themes && themes.length > 0 ? themes.map((t: any) => ({ ...t, createdAt: t.created_at ? new Date(t.created_at).getTime() : Date.now() })) : prev.themes,
           insights: insights && insights.length > 0 ? insights.map((i: any) => ({ 
             id: i.id, 
             user_id: i.user_id,
             themeId: i.theme_id, 
             body: i.body, 
-            createdAt: i.created_at || Date.now(), 
+            createdAt: i.created_at ? new Date(i.created_at).getTime() : Date.now(), 
             linkedToIds: i.linked_to_ids || [] 
           })) : prev.insights,
           currentThemeId: prev.currentThemeId || (themes && themes.length > 0 ? themes[0].id : null)
         }));
       } catch (err) {
-        console.warn("Supabase Fetch Warning (Local state will be used):", err);
+        console.warn("Supabase Fetch Error:", err);
       }
     };
     fetchData();
@@ -83,49 +99,54 @@ const App: React.FC = () => {
   }, []);
 
   const logout = useCallback(() => {
-    if (confirm("ログアウトしますか？（ブラウザのデータは保持されます）")) {
+    if (confirm("ログアウトしますか？")) {
       setState(prev => ({ ...prev, user: { ...INITIAL_USER, isLoggedIn: false } }));
     }
   }, []);
 
   const addTheme = useCallback(async (name: string, goal: string) => {
-    if (!state.user.id) return;
-    const newThemeId = crypto.randomUUID();
-    const newThemeData = { 
+    if (!state.user.id) {
+      console.error("Theme creation failed: user.id is missing");
+      return;
+    }
+    
+    const newThemeId = generateId();
+    const now = Date.now();
+    const newTheme: Theme = { 
       id: newThemeId, 
       user_id: state.user.id, 
       name, 
-      goal 
+      goal,
+      createdAt: now
     };
 
-    // 楽観的にStateを即座に更新する
+    // 1. ローカルに即時反映（UIの反応を最優先）
     setState(prev => ({
       ...prev,
-      themes: [...prev.themes, { ...newThemeData, createdAt: Date.now() }],
+      themes: [...prev.themes, newTheme],
       currentThemeId: newThemeId
     }));
 
-    // バックグラウンドで同期
-    const { error } = await supabase.from('themes').insert([{
-      ...newThemeData,
-      created_at: new Date().toISOString()
-    }]);
-    
-    if (error) {
-      console.error("Supabase Sync Error:", error);
-      // 通信エラーでもLocalStorageにあるので、ユーザーには影響させない
+    // 2. サーバー同期（非同期）
+    try {
+      await supabase.from('themes').insert([{
+        id: newThemeId,
+        user_id: state.user.id,
+        name,
+        goal,
+        created_at: new Date(now).toISOString()
+      }]);
+    } catch (err) {
+      console.error("Supabase theme insert error:", err);
     }
   }, [state.user.id]);
 
   const updateThemeGoal = useCallback(async (id: string, goal: string) => {
-    // 即時反映
     setState(prev => ({
       ...prev,
       themes: prev.themes.map(t => t.id === id ? { ...t, goal } : t)
     }));
-
-    const { error } = await supabase.from('themes').update({ goal }).eq('id', id);
-    if (error) console.error(error);
+    await supabase.from('themes').update({ goal }).eq('id', id);
   }, []);
 
   const switchTheme = useCallback((id: string) => {
@@ -134,35 +155,32 @@ const App: React.FC = () => {
 
   const addInsight = useCallback(async (body: string, themeId: string, sessionId?: string) => {
     if (!themeId || !state.user.id) return;
-    const newInsightId = crypto.randomUUID();
-    const newInsightData = {
+    const newInsightId = generateId();
+    const now = Date.now();
+    
+    const newInsight: Insight = { 
+      id: newInsightId, 
+      user_id: state.user.id,
+      themeId, 
+      body, 
+      createdAt: now, 
+      linkedToIds: [],
+      sessionId
+    };
+
+    setState(prev => ({
+      ...prev,
+      insights: [...prev.insights, newInsight]
+    }));
+
+    await supabase.from('insights').insert([{
       id: newInsightId,
       user_id: state.user.id,
       theme_id: themeId,
       body,
-      linked_to_ids: []
-    };
-
-    // 即時反映
-    setState(prev => ({
-      ...prev,
-      insights: [...prev.insights, { 
-        id: newInsightId, 
-        user_id: state.user.id,
-        themeId, 
-        body, 
-        createdAt: Date.now(), 
-        linkedToIds: [],
-        sessionId
-      }]
-    }));
-
-    const { error } = await supabase.from('insights').insert([{
-      ...newInsightData,
-      created_at: new Date().toISOString()
+      linked_to_ids: [],
+      created_at: new Date(now).toISOString()
     }]);
-
-    if (error) console.error(error);
   }, [state.user.id]);
 
   const deleteInsight = useCallback(async (id: string) => {
@@ -170,8 +188,7 @@ const App: React.FC = () => {
       ...prev,
       insights: prev.insights.filter(i => i.id !== id)
     }));
-    const { error } = await supabase.from('insights').delete().eq('id', id);
-    if (error) console.error(error);
+    await supabase.from('insights').delete().eq('id', id);
   }, []);
 
   const updateInsight = useCallback(async (id: string, body: string) => {
@@ -179,8 +196,7 @@ const App: React.FC = () => {
       ...prev,
       insights: prev.insights.map(i => i.id === id ? { ...i, body } : i)
     }));
-    const { error } = await supabase.from('insights').update({ body }).eq('id', id);
-    if (error) console.error(error);
+    await supabase.from('insights').update({ body }).eq('id', id);
   }, []);
 
   const linkInsights = useCallback(async (id1: string, id2: string) => {
@@ -217,11 +233,7 @@ const App: React.FC = () => {
 
   return (
     <HashRouter>
-      {/* 
-        h-[100dvh] でモバイルのアドレスバーを除いた動的な高さを確保 
-        fixed inset-0 で画面全体に固定し、レイアウト崩れを防ぐ
-      */}
-      <div className="fixed inset-0 max-w-md mx-auto bg-white shadow-xl flex flex-col overflow-hidden">
+      <div className="flex flex-col h-full w-full max-w-md mx-auto bg-white shadow-xl overflow-hidden relative">
         <main className="flex-1 overflow-hidden relative">
           <Routes>
             <Route path="/login" element={state.user.isLoggedIn ? <Navigate to="/" /> : <Auth onLogin={login} />} />
@@ -235,7 +247,7 @@ const App: React.FC = () => {
         </main>
         
         {state.user.isLoggedIn && (
-          <nav className="relative z-[9999] h-16 shrink-0 bg-white border-t border-slate-200 flex justify-around items-center px-2 pointer-events-auto shadow-[0_-1px_10px_rgba(0,0,0,0.05)] pb-[env(safe-area-inset-bottom)]">
+          <nav className="shrink-0 bg-white border-t border-slate-200 flex justify-around items-center px-2 shadow-[0_-1px_10px_rgba(0,0,0,0.05)] pb-safe h-[calc(4rem+env(safe-area-inset-bottom))]">
             <NavLink to="/" icon="🏠" label="ホーム" />
             <NavLink to="/chat" icon="💬" label="壁打ち" />
             <NavLink to="/insights" icon="💡" label="気づき" />
@@ -252,7 +264,7 @@ const NavLink: React.FC<{ to: string, icon: string, label: string }> = ({ to, ic
   const location = useLocation();
   const isActive = location.pathname === to;
   return (
-    <Link to={to} className={`flex flex-col items-center gap-1 transition-all py-1 px-4 active:scale-95 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}>
+    <Link to={to} className={`flex flex-col items-center gap-1 transition-all py-2 px-4 active:scale-95 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}>
       <span className="text-xl leading-none">{icon}</span>
       <span className="text-[10px] font-black uppercase tracking-tighter leading-none">{label}</span>
     </Link>

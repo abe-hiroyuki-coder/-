@@ -50,12 +50,22 @@ const Dashboard: React.FC<DashboardProps> = ({ state, currentTheme, addTheme, up
 
   const handleCreateTheme = (e: React.FormEvent) => {
     e.preventDefault();
-    if (newName && newGoal) {
-      addTheme(newName, newGoal);
-      setIsAdding(false);
-      setNewName('');
-      setNewGoal('');
+    console.log("Submit handleCreateTheme called", { newName, newGoal, userId: state.user.id });
+    
+    if (!newName.trim() || !newGoal.trim()) {
+      alert("テーマ名と目標を入力してください。");
+      return;
     }
+
+    if (!state.user.id) {
+      alert("ユーザーIDが正しく設定されていません。一度ログアウトして再ログインしてください。");
+      return;
+    }
+
+    addTheme(newName, newGoal);
+    setIsAdding(false);
+    setNewName('');
+    setNewGoal('');
   };
 
   const startVoiceInput = () => {
@@ -75,7 +85,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, currentTheme, addTheme, up
   };
 
   return (
-    <div className="p-6 pb-24 space-y-8 h-full overflow-y-auto relative">
+    <div className="p-6 pb-20 space-y-8 h-full overflow-y-auto relative bg-slate-50">
       {showToast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-slate-900 text-white px-6 py-3 rounded-full text-xs font-bold shadow-xl animate-in fade-in slide-in-from-top-2">
           💡 保存しました
@@ -100,7 +110,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, currentTheme, addTheme, up
             <div className="absolute right-0 mt-3 w-48 bg-white rounded-3xl shadow-2xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 origin-top-right">
               <div className="px-4 py-3 border-b border-slate-50">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">User ID</p>
-                <p className="text-[8px] font-mono text-slate-300 break-all">{state.user.id}</p>
+                <p className="text-[8px] font-mono text-slate-300 break-all">{state.user.id || 'Not Set'}</p>
               </div>
               <button 
                 onClick={onLogout}
@@ -149,7 +159,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, currentTheme, addTheme, up
           <select 
             value={currentTheme?.id || ''} 
             onChange={(e) => switchTheme(e.target.value)} 
-            className="w-full p-5 bg-slate-50 rounded-3xl font-black text-lg outline-none ring-indigo-500 focus:ring-2 transition-all appearance-none"
+            className="w-full p-5 bg-white border border-slate-100 rounded-3xl font-black text-lg outline-none ring-indigo-500 focus:ring-2 transition-all appearance-none"
           >
             {state.themes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>

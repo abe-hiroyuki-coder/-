@@ -2,24 +2,12 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>熟達っつぁん</title>
-    <!-- エラー特定のためのスクリプト -->
     <script>
-      // ブラウザ環境で process.env が存在しないことによる ReferenceError を防止
       window.process = window.process || { env: {} };
-      
-      // ホワイトスクリーンの原因を特定するためのグローバルエラーハンドラ
       window.onerror = function(msg, url, line, col, error) {
         console.error("Global Error:", msg, "at", url, ":", line);
-        // 開発中にエラー内容を確認しやすくするため（本番では消去可能）
-        if (!window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {
-           // Vercel等の環境でもエラーがあることを知らせる
-           const root = document.getElementById('root');
-           if (root && root.innerHTML === '') {
-             root.innerHTML = '<div style="padding: 20px; color: #ef4444; font-family: sans-serif;"><h3>エラーが発生しました</h3><p>アプリの起動に失敗しました。環境変数（API_KEY, NEXT_PUBLIC_SUPABASE_URL 等）が正しく設定されているか確認してください。</p><pre style="font-size: 10px; overflow: auto;">' + msg + '</pre></div>';
-           }
-        }
         return false;
       };
     </script>
@@ -32,10 +20,24 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="熟達っつぁん">
     <style>
-        body {
+        :root {
+            --app-height: 100dvh;
+        }
+        html, body {
+            height: var(--app-height);
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* システム全体のスクロールを禁止 */
+            position: fixed; /* iOSでのバウンス防止 */
             font-family: 'Inter', 'Noto Sans JP', sans-serif;
-            overscroll-behavior-y: contain;
             background-color: #f8fafc;
+        }
+        #root {
+            height: 100%;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
         }
         @keyframes float {
             0% { transform: translateY(0px); }
@@ -44,6 +46,10 @@
         }
         .float-animation {
             animation: float 3s ease-in-out infinite;
+        }
+        /* セーフエリア対応のパディング */
+        .pb-safe {
+            padding-bottom: env(safe-area-inset-bottom);
         }
     </style>
 <script type="importmap">
@@ -61,14 +67,5 @@
 <body class="bg-slate-50 text-slate-900">
     <div id="root"></div>
     <script type="module" src="index.tsx"></script>
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js')
-                    .then(reg => console.log('SW registered!', reg))
-                    .catch(err => console.log('SW registration failed:', err));
-            });
-        }
-    </script>
 </body>
 </html>
