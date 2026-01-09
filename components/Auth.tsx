@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { UserProfile } from '../types';
 import { supabase } from '../services/supabase';
@@ -27,7 +26,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
   const requestNotificationPermission = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      console.log('Push not supported');
+      alert('お使いのブラウザはプッシュ通知に対応していません。');
       return;
     }
 
@@ -37,8 +36,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       if (permission === 'granted') {
         const registration = await navigator.serviceWorker.ready;
         
-        // VAPID Public Key を環境変数から取得（クライアント側で利用可能にするには NEXT_PUBLIC_ プレフィックスが必要）
-        const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+        // 安全な環境変数アクセス
+        const vapidPublicKey = (globalThis as any).process?.env?.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
         
         if (vapidPublicKey) {
           const subscription = await registration.pushManager.subscribe({
@@ -46,25 +45,28 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             applicationServerKey: vapidPublicKey
           });
 
-          // Supabaseに購読情報を保存
           await supabase.from('push_subscriptions').insert([{
             user_id: name || 'anonymous',
             subscription: subscription
           }]);
           
-          console.log('Push subscription saved to Supabase');
+          alert('通知の設定が完了しました！');
+        } else {
+          console.warn('VAPID Public Key is not set.');
+          alert('通知サーバーの設定が見つかりません。');
         }
       }
     } catch (err) {
       console.error('Failed to subscribe to push', err);
+      alert('通知の登録に失敗しました。');
     } finally {
       setIsSubscribing(false);
     }
   };
 
   return (
-    <div className="min-h-screen p-8 flex flex-col justify-center space-y-12 bg-indigo-600 text-white">
-      <div className="text-center space-y-4">
+    <div className="flex-1 flex flex-col justify-center p-8 space-y-12 bg-indigo-600 text-white overflow-y-auto">
+      <div className="text-center space-y-4 pt-8">
         <div className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-[40px] flex items-center justify-center text-5xl mx-auto shadow-2xl float-animation">
           🐙
         </div>
@@ -75,7 +77,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6 pb-12">
         <div className="space-y-2">
           <label className="text-[10px] font-black uppercase tracking-widest text-indigo-200">あなたの名前</label>
           <input 
