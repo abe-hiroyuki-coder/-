@@ -7,11 +7,26 @@ interface AuthProps {
   onLogin: (user: UserProfile) => void;
 }
 
+// VAPIDキー（Base64URL形式）をブラウザが解釈できるUint8Arrayに変換するヘルパー関数
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding)
+    .replace(/\-/g, '+')
+    .replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
 const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [name, setName] = useState('');
   const [freq, setFreq] = useState<'daily' | 'weekly' | 'none'>('daily');
   const [time, setTime] = useState('21:00');
   const [isLoading, setIsLoading] = useState(false);
+  const [isSubscribing, setIsSubscribing] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,8 +35,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     setIsLoading(true);
     try {
-      // マルチデバイス対応: 既存ユーザー名を検索してIDを引き継ぐ
-      const { data: existingUsers, error } = await supabase
+      const { data: existingUsers } = await supabase
         .from('user_profiles')
         .select('*')
         .eq('name', trimmedName)
@@ -30,7 +44,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       let userData: UserProfile;
 
       if (existingUsers && existingUsers.length > 0) {
-        // 既存ユーザーが見つかった場合（マルチデバイス引き継ぎ）
         const user = existingUsers[0];
         userData = {
           id: user.id,
@@ -40,7 +53,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           notificationTime: user.notification_time || time
         };
       } else {
-        // 新規ユーザーの場合
         const newId = crypto.randomUUID();
         userData = {
           id: newId,
@@ -50,7 +62,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           notificationTime: time
         };
 
-        // DBに新規プロフィールを保存
         await supabase.from('user_profiles').insert([{
           id: newId,
           name: trimmedName,
@@ -63,7 +74,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     } catch (err) {
       console.error('Login error:', err);
       alert('ログイン処理中にエラーが発生しました。オフラインモードで開始します。');
-      // フォールバック
       onLogin({
         id: crypto.randomUUID(),
         name: trimmedName,
@@ -82,38 +92,44 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       return;
     }
 
+    setIsSubscribing(true);
     try {
       const permission = await Notification.requestPermission();
       if (permission === 'granted') {
         const registration = await navigator.serviceWorker.ready;
         
-        // 環境変数からPublic Keyを取得。設定されていない場合の警告を強化
-        const vapidPublicKey = (globalThis as any).process?.env?.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+        // 環境変数からPublic Keyを取得。
+        const vapidPublicKeyRaw = (globalThis as any).process?.env?.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
         
-        if (!vapidPublicKey) {
-          alert('【設定エラー】Vercelの環境変数に NEXT_PUBLIC_VAPID_PUBLIC_KEY が設定されていません。VercelのSettings > Environment Variables から設定してください。');
+        if (!vapidPublicKeyRaw) {
+          alert('【設定エラー】Vercelの環境変数に NEXT_PUBLIC_VAPID_PUBLIC_KEY が設定されていません。');
+          setIsSubscribing(false);
           return;
         }
 
+        // Uint8Arrayに変換しないと、ブラウザが公開鍵を正しく解釈できず無限待機(グルグル)やエラーになります
+        const applicationServerKey = urlBase64ToUint8Array(vapidPublicKeyRaw);
+
         const subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: vapidPublicKey
+          applicationServerKey: applicationServerKey
         });
 
-        // 各端末ごとに購読情報を保存（マルチデバイス通知用）
         await supabase.from('push_subscriptions').insert([{
           user_id: name || 'anonymous',
           subscription: subscription,
           device_info: navigator.userAgent
         }]);
         
-        alert('この端末での通知設定が完了しました！設定した時間（' + time + '）に通知が届きます。');
+        alert('通知設定が完了しました！');
       } else {
-        alert('通知がブロックされました。ブラウザの設定から通知を許可してください。');
+        alert('通知がブロックされました。ブラウザの設定から許可してください。');
       }
     } catch (err) {
       console.error('Failed to subscribe to push', err);
       alert('通知の登録に失敗しました。VAPIDキーの形式が正しいか確認してください。');
+    } finally {
+      setIsSubscribing(false);
     }
   };
 
@@ -125,14 +141,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         </div>
         <h1 className="text-3xl font-black tracking-tighter">熟達っつぁん</h1>
         <p className="text-indigo-100 text-sm opacity-80 leading-relaxed">
-          同じ名前でログインすると、<br/>
-          どの端末からでも続きを記録できます。
+          あなたの試行錯誤を、<br/>
+          知性に変える。
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6 pb-12 flex-1">
         <div className="space-y-2">
-          <label className="text-[10px] font-black uppercase tracking-widest text-indigo-200">ユーザー名（引き継ぎ用）</label>
+          <label className="text-[10px] font-black uppercase tracking-widest text-indigo-200">ユーザー名</label>
           <input 
             required
             value={name}
@@ -143,7 +159,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         </div>
 
         <div className="space-y-4 bg-white/10 p-6 rounded-3xl backdrop-blur-sm">
-          <label className="text-[10px] font-black uppercase tracking-widest text-indigo-200 block mb-2">通知の設定（任意）</label>
+          <label className="text-[10px] font-black uppercase tracking-widest text-indigo-200 block mb-2">通知の設定</label>
           <div className="flex gap-2">
             {(['daily', 'weekly', 'none'] as const).map(f => (
               <button
@@ -171,10 +187,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               </div>
               <button 
                 type="button"
+                disabled={isSubscribing}
                 onClick={requestNotificationPermission}
-                className="text-[10px] bg-white/20 hover:bg-white/30 py-2 rounded-lg font-black uppercase tracking-tighter transition-colors"
+                className="text-[10px] bg-white/20 hover:bg-white/30 py-2 rounded-lg font-black uppercase tracking-tighter transition-colors disabled:opacity-50"
               >
-                この端末の通知を許可する 🔔
+                {isSubscribing ? '登録中...' : 'この端末の通知を許可する 🔔'}
               </button>
             </div>
           )}

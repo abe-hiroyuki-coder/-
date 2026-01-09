@@ -34,7 +34,11 @@ const INITIAL_USER: UserProfile = {
   notificationTime: '21:00'
 };
 
-const App: React.FC = () => {
+// ルーティングとナビゲーションを管理するための内部コンポーネント
+const AppRoutes: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [state, setState] = useState<AppState>(() => {
     const saved = localStorage.getItem('jukutatsu_state');
     if (saved) {
@@ -102,10 +106,12 @@ const App: React.FC = () => {
 
   const login = useCallback((userData: UserProfile) => {
     setState(prev => ({ ...prev, user: userData }));
-  }, []);
+    navigate('/');
+  }, [navigate]);
 
   const logout = useCallback(() => {
     if (confirm("ログアウトしますか？\n次回は同じユーザー名でログインすることで、記録を再開できます。")) {
+      localStorage.removeItem('jukutatsu_state');
       setState({
         user: { ...INITIAL_USER, isLoggedIn: false },
         themes: [],
@@ -115,9 +121,9 @@ const App: React.FC = () => {
         sessions: [],
         activeChatMessages: []
       });
-      localStorage.removeItem('jukutatsu_state');
+      navigate('/login');
     }
-  }, []);
+  }, [navigate]);
 
   const updateUserProfile = useCallback(async (updates: Partial<UserProfile>) => {
     setState(prev => ({
@@ -260,48 +266,52 @@ const App: React.FC = () => {
   }, []);
 
   return (
+    <div 
+      className="flex flex-col w-full max-w-md mx-auto bg-white shadow-xl relative"
+      style={{ minHeight: 'var(--app-height)' }}
+    >
+      <main className="flex-1 relative scroll-container">
+        <Routes>
+          <Route path="/login" element={state.user.isLoggedIn ? <Navigate to="/" /> : <Auth onLogin={login} />} />
+          <Route path="/" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <Dashboard state={state} currentTheme={currentTheme} addTheme={addTheme} updateThemeGoal={updateThemeGoal} switchTheme={switchTheme} addInsight={addInsight} onLogout={logout} onUpdateUser={updateUserProfile} />} />
+          <Route path="/chat" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <ChatSession currentTheme={currentTheme} addInsight={addInsight} persistedMessages={state.activeChatMessages} setPersistedMessages={setChatMessages} clearPersistedMessages={clearChat} />} />
+          <Route path="/insights" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <InsightList insights={state.insights.filter(i => i.themeId === state.currentThemeId)} allInsights={state.insights} linkInsights={linkInsights} deleteInsight={deleteInsight} updateInsight={updateInsight} />} />
+          <Route path="/graph" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <InsightGraph insights={state.insights.filter(i => i.themeId === state.currentThemeId)} />} />
+          <Route path="/review" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <WeeklyReview insights={state.insights.filter(i => i.themeId === state.currentThemeId)} theme={currentTheme} />} />
+          <Route path="/achievements" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <AchievementBadges achievements={state.achievements} />} />
+        </Routes>
+      </main>
+      
+      {state.user.isLoggedIn && (
+        <nav 
+          className="shrink-0 bg-white border-t border-slate-200 flex justify-around items-center px-2 shadow-[0_-1px_10px_rgba(0,0,0,0.05)]"
+          style={{ 
+            paddingBottom: 'env(safe-area-inset-bottom)', 
+            height: 'calc(4rem + env(safe-area-inset-bottom))' 
+          }}
+        >
+          <NavLink to="/" icon="🏠" label="ホーム" active={location.pathname === '/'} />
+          <NavLink to="/chat" icon="💬" label="壁打ち" active={location.pathname === '/chat'} />
+          <NavLink to="/insights" icon="💡" label="気づき" active={location.pathname === '/insights'} />
+          <NavLink to="/graph" icon="🕸️" label="地図" active={location.pathname === '/graph'} />
+          <NavLink to="/achievements" icon="🏆" label="実績" active={location.pathname === '/achievements'} />
+        </nav>
+      )}
+    </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
     <HashRouter>
-      <div 
-        className="flex flex-col w-full max-w-md mx-auto bg-white shadow-xl relative"
-        style={{ minHeight: 'var(--app-height)' }}
-      >
-        <main className="flex-1 relative scroll-container">
-          <Routes>
-            <Route path="/login" element={state.user.isLoggedIn ? <Navigate to="/" /> : <Auth onLogin={login} />} />
-            <Route path="/" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <Dashboard state={state} currentTheme={currentTheme} addTheme={addTheme} updateThemeGoal={updateThemeGoal} switchTheme={switchTheme} addInsight={addInsight} onLogout={logout} onUpdateUser={updateUserProfile} />} />
-            <Route path="/chat" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <ChatSession currentTheme={currentTheme} addInsight={addInsight} persistedMessages={state.activeChatMessages} setPersistedMessages={setChatMessages} clearPersistedMessages={clearChat} />} />
-            <Route path="/insights" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <InsightList insights={state.insights.filter(i => i.themeId === state.currentThemeId)} allInsights={state.insights} linkInsights={linkInsights} deleteInsight={deleteInsight} updateInsight={updateInsight} />} />
-            <Route path="/graph" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <InsightGraph insights={state.insights.filter(i => i.themeId === state.currentThemeId)} />} />
-            <Route path="/review" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <WeeklyReview insights={state.insights.filter(i => i.themeId === state.currentThemeId)} theme={currentTheme} />} />
-            <Route path="/achievements" element={!state.user.isLoggedIn ? <Navigate to="/login" /> : <AchievementBadges achievements={state.achievements} />} />
-          </Routes>
-        </main>
-        
-        {state.user.isLoggedIn && (
-          <nav 
-            className="shrink-0 bg-white border-t border-slate-200 flex justify-around items-center px-2 shadow-[0_-1px_10px_rgba(0,0,0,0.05)]"
-            style={{ 
-              paddingBottom: 'env(safe-area-inset-bottom)', 
-              height: 'calc(4rem + env(safe-area-inset-bottom))' 
-            }}
-          >
-            <NavLink to="/" icon="🏠" label="ホーム" />
-            <NavLink to="/chat" icon="💬" label="壁打ち" />
-            <NavLink to="/insights" icon="💡" label="気づき" />
-            <NavLink to="/graph" icon="🕸️" label="地図" />
-            <NavLink to="/achievements" icon="🏆" label="実績" />
-          </nav>
-        )}
-      </div>
+      <AppRoutes />
     </HashRouter>
   );
 };
 
-const NavLink: React.FC<{ to: string, icon: string, label: string }> = ({ to, icon, label }) => {
-  const location = useLocation();
-  const isActive = location.pathname === to;
+const NavLink: React.FC<{ to: string, icon: string, label: string, active: boolean }> = ({ to, icon, label, active }) => {
   return (
-    <Link to={to} className={`flex flex-col items-center gap-1 transition-all py-2 px-4 active:scale-95 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}>
+    <Link to={to} className={`flex flex-col items-center gap-1 transition-all py-2 px-4 active:scale-95 ${active ? 'text-indigo-600' : 'text-slate-400'}`}>
       <span className="text-xl leading-none">{icon}</span>
       <span className="text-[10px] font-black uppercase tracking-tighter leading-none">{label}</span>
     </Link>
