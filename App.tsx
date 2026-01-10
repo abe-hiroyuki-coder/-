@@ -41,20 +41,14 @@ const AppRoutes: React.FC = () => {
   const [state, setState] = useState<AppState>(() => {
     const saved = localStorage.getItem('jukutatsu_state');
     if (saved) {
-      const parsed = JSON.parse(saved);
-      // 万が一壊れたデータがあれば初期化
-      if (!parsed.user || !parsed.user.id && parsed.user.isLoggedIn) {
-        return {
-          user: INITIAL_USER,
-          themes: [],
-          currentThemeId: null,
-          insights: [],
-          achievements: INITIAL_ACHIEVEMENTS,
-          sessions: [],
-          activeChatMessages: []
-        };
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.user && parsed.user.isLoggedIn) {
+          return parsed;
+        }
+      } catch (e) {
+        console.error("Parse error", e);
       }
-      return parsed;
     }
     return {
       user: INITIAL_USER,
@@ -70,16 +64,12 @@ const AppRoutes: React.FC = () => {
   const syncDataFromSupabase = useCallback(async (userId: string) => {
     if (!userId) return;
     try {
-      console.log("Supabaseからデータを取得中... User:", userId);
+      console.log("DBからデータを同期中... UserID:", userId);
       const [themesRes, insightsRes, profileRes] = await Promise.all([
         supabase.from('themes').select('*').eq('user_id', userId),
         supabase.from('insights').select('*').eq('user_id', userId),
         supabase.from('user_profiles').select('*').eq('id', userId).single()
       ]);
-
-      if (profileRes.error && profileRes.error.code !== 'PGRST116') {
-        console.error("Profile Fetch Error:", profileRes.error);
-      }
 
       const themes = themesRes.data || [];
       const insights = insightsRes.data || [];
@@ -89,8 +79,8 @@ const AppRoutes: React.FC = () => {
         ...prev,
         user: profile ? {
           ...prev.user,
-          notificationFrequency: profile.notification_frequency,
-          notificationTime: profile.notification_time
+          notificationFrequency: profile.notification_frequency || 'daily',
+          notificationTime: profile.notification_time || '21:00'
         } : prev.user,
         themes: themes.map((t: any) => ({ 
           ...t, 
@@ -107,25 +97,25 @@ const AppRoutes: React.FC = () => {
         currentThemeId: (themes.length > 0) ? themes[0].id : null
       }));
     } catch (err) {
-      console.warn("Supabase Sync Error:", err);
+      console.error("Supabase Sync Error:", err);
     }
   }, []);
 
-  // ユーザーIDが変わった時（ログイン時）に同期
+  // ログイン中なら同期を開始
   useEffect(() => {
     if (state.user.isLoggedIn && state.user.id) {
       syncDataFromSupabase(state.user.id);
     }
   }, [state.user.isLoggedIn, state.user.id, syncDataFromSupabase]);
 
-  // ステートを保存
+  // ステート保存
   useEffect(() => {
     localStorage.setItem('jukutatsu_state', JSON.stringify(state));
   }, [state]);
 
   const login = useCallback((userData: UserProfile) => {
-    console.log("Login sequence started for:", userData.name);
-    // 既存のステートを完全にリセットしてから新しいユーザーをセット
+    console.log("ログイン実行:", userData.name);
+    // 重要: 以前のユーザーデータを完全に消去してから新しい情報をセット
     setState({
       user: userData,
       themes: [],
@@ -135,11 +125,12 @@ const AppRoutes: React.FC = () => {
       sessions: [],
       activeChatMessages: []
     });
+    // 直後に同期がuseEffectによって走る
     navigate('/', { replace: true });
   }, [navigate]);
 
   const logout = useCallback(() => {
-    if (confirm("ログアウトしますか？\n端末内の記録もクリアされます。")) {
+    if (confirm("ログアウトしますか？\n(この端末の記録はクリアされ、次回ログイン時に再取得されます)")) {
       localStorage.removeItem('jukutatsu_state');
       setState({
         user: { ...INITIAL_USER, isLoggedIn: false },
@@ -154,27 +145,24 @@ const AppRoutes: React.FC = () => {
     }
   }, [navigate]);
 
-  // --- 以下の各種アクション (addTheme, addInsight等) は変更なしだが、user_idの受け渡しを確実にする ---
   const addTheme = useCallback(async (name: string, goal: string) => {
     const userId = state.user.id;
     if (!userId) return;
-    const newThemeId = generateId();
+    const newId = generateId();
     const now = Date.now();
-    const newTheme: Theme = { id: newThemeId, user_id: userId, name, goal, createdAt: now };
-
-    setState(prev => ({ ...prev, themes: [...prev.themes, newTheme], currentThemeId: newThemeId }));
-    await supabase.from('themes').insert([{ id: newThemeId, user_id: userId, name, goal, created_at: new Date(now).toISOString() }]);
+    const newTheme: Theme = { id: newId, user_id: userId, name, goal, createdAt: now };
+    setState(prev => ({ ...prev, themes: [...prev.themes, newTheme], currentThemeId: newId }));
+    await supabase.from('themes').insert([{ id: newId, user_id: userId, name, goal, created_at: new Date(now).toISOString() }]);
   }, [state.user.id]);
 
   const addInsight = useCallback(async (body: string, themeId: string, sessionId?: string) => {
     const userId = state.user.id;
     if (!userId || !themeId) return;
-    const newInsightId = generateId();
+    const newId = generateId();
     const now = Date.now();
-    const newInsight: Insight = { id: newInsightId, user_id: userId, themeId, body, createdAt: now, linkedToIds: [], sessionId };
-
+    const newInsight: Insight = { id: newId, user_id: userId, themeId, body, createdAt: now, linkedToIds: [], sessionId };
     setState(prev => ({ ...prev, insights: [...prev.insights, newInsight] }));
-    await supabase.from('insights').insert([{ id: newInsightId, user_id: userId, theme_id: themeId, body, linked_to_ids: [], created_at: new Date(now).toISOString() }]);
+    await supabase.from('insights').insert([{ id: newId, user_id: userId, theme_id: themeId, body, linked_to_ids: [], created_at: new Date(now).toISOString() }]);
   }, [state.user.id]);
 
   const currentTheme = useMemo(() => state.themes.find(t => t.id === state.currentThemeId) || null, [state.themes, state.currentThemeId]);
@@ -200,6 +188,7 @@ const AppRoutes: React.FC = () => {
     setState(prev => ({ ...prev, insights: prev.insights.map(ins => ins.id === id1 ? { ...ins, linkedToIds: newLinks1 } : (ins.id === id2 ? { ...ins, linkedToIds: newLinks2 } : ins)) }));
     await Promise.all([supabase.from('insights').update({ linked_to_ids: newLinks1 }).eq('id', id1), supabase.from('insights').update({ linked_to_ids: newLinks2 }).eq('id', id2)]);
   }, [state.insights]);
+
   const setChatMessages = useCallback((update: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => setState(prev => ({ ...prev, activeChatMessages: typeof update === 'function' ? update(prev.activeChatMessages) : update })), []);
   const clearChat = useCallback(() => setState(prev => ({ ...prev, activeChatMessages: [] })), []);
   const updateUserProfile = useCallback(async (updates: Partial<UserProfile>) => {

@@ -30,7 +30,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     setIsLoading(true);
     try {
-      // ユーザー名で検索
+      // 1. まずDBにその名前のユーザーがいるか検索
+      console.log("アカウント検索中:", trimmedName);
       const { data: existingUsers, error: fetchError } = await supabase
         .from('user_profiles')
         .select('*')
@@ -38,9 +39,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
       if (fetchError) {
         console.error("Fetch Error:", fetchError);
-        // テーブルが存在しない等のエラーを検知したら警告
+        // テーブルがない場合のエラーメッセージ
         if (fetchError.message.includes("relation") && fetchError.message.includes("does not exist")) {
-          throw new Error("Supabaseにテーブルが作成されていません。PMの説明に従ってSQLを実行してください。");
+          throw new Error("Supabaseにテーブルが存在しません。SQL Editorでテーブル作成用SQLを実行してください。");
         }
         throw fetchError;
       }
@@ -48,9 +49,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       let userData: UserProfile;
 
       if (existingUsers && existingUsers.length > 0) {
-        // 既存ユーザーがいる場合：その情報を利用
+        // A. すでにユーザーが存在する場合：そのIDをアプリで利用
         const user = existingUsers[0];
-        console.log("既存ユーザーが見つかりました:", user.name, user.id);
+        console.log("既存アカウントが見つかりました:", user.id);
         userData = {
           id: user.id,
           name: user.name,
@@ -59,9 +60,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           notificationTime: user.notification_time || '21:00'
         };
       } else {
-        // 新規ユーザー作成
+        // B. まったく新しいユーザーの場合：新規作成
         const newId = crypto.randomUUID();
-        console.log("新規ユーザーを作成します:", trimmedName, newId);
+        console.log("新規アカウントを作成します:", newId);
         userData = {
           id: newId,
           name: trimmedName,
@@ -80,7 +81,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         if (insertError) throw insertError;
       }
 
-      // 成功したら親コンポーネントへ（ここでApp.tsxのloginが呼ばれステートが初期化される）
+      // loginを実行。App.tsxでステートがリセットされる
       onLogin(userData);
     } catch (err: any) {
       console.error('Login error:', err);
@@ -122,6 +123,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         <div className="space-y-2">
           <label className="text-[10px] font-black uppercase tracking-widest text-indigo-200">ユーザー名</label>
           <input required value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-white/10 border-b-2 border-white/20 p-3 outline-none focus:border-white transition-all text-xl font-bold" placeholder="例：熟達 太郎" />
+          <p className="text-[10px] text-indigo-200 opacity-60">※同じ名前でログインすると、以前の記録を同期します。</p>
         </div>
         <div className="space-y-4 bg-white/10 p-6 rounded-3xl backdrop-blur-sm">
           <label className="text-[10px] font-black uppercase tracking-widest text-indigo-200 block mb-2">通知の設定</label>
